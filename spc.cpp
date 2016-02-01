@@ -1,10 +1,3 @@
-//============================================================================
-// Name        : AMHProject.cpp
-// Author      : Nik
-// Version     :
-// Copyright   : Your copyright notice
-// Description : Hello World in C++, Ansi-style
-//============================================================================
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -17,8 +10,10 @@
 #include "omp.h"
 
 #define margin 100 // becareful margin must me at least 3*dsize
+#define os(t,i) 	OS[t][i+margin]
 #define s(t,i) 		S[t][i+margin]
 #define d(t,k,i) 	D[t][k][i+dsize]
+#define dm(k,i) 	DMASTER[k][i+dsize]
 #define nd(t,k,i) 	ND[t][k][i+dsize]
 #define z(t,k,i) 	Z[t][k][i+margin]
 #define zn(t,k,i) 	Zn[t][k][i+margin]
@@ -26,12 +21,17 @@
 #define LAMBDA		0.1
 #define MAXDICITER 	1
 
-int T = 8;
-int dsize = 7;
-int K = 30;
+using namespace std;
+
+string resultpath = "/home/kanit/anomalydeep/result/";
+int T = 20;
+int dsize = 9;
+int K = 40;
 int ssize = 1250;
 double limitDiffLoss = 0.001;
-int miniBatch = 10;
+int maxCoordinateDescentLoop = 1000;
+int miniBatch = 5;
+int maxData = 0;
 
 
 using namespace std;
@@ -44,7 +44,9 @@ double shrink(double beta, double lamb)
 }
 
 vector< vector<double> > S(T,vector<double>(ssize+margin,0));
+vector< vector<double> > OS(T,vector<double>(ssize+margin,0));
 vector< vector< vector<double> > > D(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
+vector< vector<double> > DMASTER(K,vector<double>(dsize*2+1,0));
 vector< vector<double> > Zct(T,vector<double>(K,0));
 vector< vector< vector<double> > > ND(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
 vector< vector< vector<double> > > Z(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
@@ -111,6 +113,56 @@ void reportDZ(int t)
 		cout << res[i] <<"\t";
 	}
 	cout<<endl;
+}
+
+void reportTesting(int t, string name)
+{
+	ofstream myfile;
+	myfile.open (resultpath + name +".txt");
+	
+	myfile << "OS" << "=[";	
+	for(int i = 0 ; i < ssize ; i++)
+	{
+		myfile << os(t,i)<<" ";
+	}
+	myfile << "]\n";
+	
+	myfile << "S" << "=[";	
+	for(int i = 0 ; i < ssize ; i++)
+	{
+		myfile << s(t,i)<<" ";
+	}
+	myfile << "]\n";
+	
+	for(int k=0;k<K;k++)
+	{
+		myfile << "ND" << k << "=[";	
+		for(int ds=-dsize;ds<=dsize; ds++)
+		{
+			myfile << nd(t,k,ds)<<" ";
+		}
+		myfile << "]\n";
+	}
+
+	vector<double> d = reconstruct(t);
+	myfile << "DZ" << "=[";	
+	for(int i = 0 ; i < ssize ; i++)
+	{
+		myfile << d[i] <<" ";
+	}
+	myfile << "]\n";
+
+	for(int i = 0 ; i < K ; i++)
+	{
+		myfile << "D" << i << "=[";	
+
+		for (int j = -dsize; j<=dsize ;j++)
+		{
+			myfile << d(t,i,j)<<" ";
+		}
+		myfile << "]\n";
+	}
+	myfile.close();
 }
 
 double lossDist(int t)
@@ -180,7 +232,12 @@ void reportS(int t) {
 void initS(int t, vector<double> in) {
 	//init signal
 //	cout << "Signal("<< ssize <<") : ";
-	for(int i = 0 ; i < ssize;i++)s(t,i) = in[i];
+	for(int i = 0 ; i < ssize;i++)
+	{
+		s(t,i) = in[i];
+		os(t,i) = in[i];
+	}
+
 //	for(int i = -5 ; i < ssize+5 ;i++) cout << s(i) <<" ";
 //	cout<<endl<<endl;
 }
@@ -200,6 +257,7 @@ void normalizeS(int t)
 	for(int i = 0 ; i < ssize;i++)
 	{
 		s(t,i) = ((s(t,i)-mean)/std);
+		// s(t,i) = ((s(t,i)-mean));
 	}
 }
 
@@ -213,28 +271,17 @@ void initZ(int t) {
 		}
 	}
 }
-void syncDictionary()
-{	
-	vector< vector<double> > tmpDict(K,vector<double>(dsize*2+1,0.0));
+void syncDictionary(int t)
+{
 	for(int k = 0 ; k < K ; k++)
 	{
 		for(int i = -dsize; i <=dsize ; i++ )
 		{
 			for(int t = 0; t < T ; t++ )
 			{
-				tmpDict[k][i] += d(t,k,i);
+				dm(k,i) = 0.95*dm(k,i) + 0.05*d(t,k,i);
+				d(t,k,i) = dm(k,i);
 			}
-		}
-	}
-	for(int k = 0 ; k < K ; k++)
-	{
-		for(int i = -dsize; i <=dsize ; i++ )
-		{
-			double dki = tmpDict[k][i]/T;
-			for(int t = 0; t < T ; t++ )
-			 {
-			 	d(t,k,i) = dki;
-			 }
 		}
 	}
 }
@@ -248,15 +295,19 @@ void normalizeDictionary(int t)
 		{
 			total += d(t,k,i);
 		}
-		for(int i = -dsize; i <=dsize ; i++ )
+		if(total != 0)
 		{
-			d(t,k,i) /=total;
+			for(int i = -dsize; i <=dsize ; i++ )
+			{
+				d(t,k,i) /= total;
+			}
 		}
 	}
 }
 
 void initD()
 {
+	
 	for(int k=0; k < K;k++)
 	{
 		for(int i=-dsize; i<=dsize; i++)
@@ -264,7 +315,9 @@ void initD()
 			d(0,k,i) = 1./(1+2*dsize) + 1./(1+2*dsize)*(rand()%10000)/100000.0;
 		}
 	}
+	
 	normalizeDictionary(0);
+	
 	// duplicate them to all thread
 	for(int k=0; k < K;k++)
 	{
@@ -274,6 +327,7 @@ void initD()
 			{	
 				d(t,k,i) = d(0,k,i);
 			}
+			dm(k,i) = d(0,k,i);
 		}
 	}
 	
@@ -322,11 +376,11 @@ void inference(int t)
 		//calculate loss
 		double loss =0 ;
 		loss = calcLoss(t);
-		if(round%20==0)
-		{
-			// cout<<"InferZ Loss("<<round<<"):\t";
-			// printf("%.5f\n",loss);
-		}
+		// if(round%20==0)
+		// {
+		// 	cout<<"InferZ Loss("<<round<<"):\t";
+		// 	printf("%.5f\n",loss);
+		// }
 		round++;
 
 		if(fabs(lastLoss-loss) < 0.1)
@@ -334,6 +388,8 @@ void inference(int t)
 			// printf("end ! %.5f %.5f\n",loss,lastLoss);
 			return;
 		}
+		if(round  > maxCoordinateDescentLoop ) break;
+		if(loss==0) break;
 //		scanf("%c",&x);
 
 //		reportZ();
@@ -429,6 +485,7 @@ void learnDictionary(int t)
 		round++;
 
 		if(fabs(loss-lastLoss) < limitDiffLoss) return;
+		if(loss<0.0001) return;
 //		if(loss>lastLoss)
 //		{
 //			stepsize/=2;
@@ -511,8 +568,9 @@ vector< vector<double> > timeSeries(string path)
 		short shABP[1250];
 
 		//fixed for fast !
-		// countII = 7260032;
-		countII = 1000000;
+		countII = 7260032;
+		if(maxData != 0 )
+			countII = maxData;
 		// while (!myReadFile.eof())
   //   	{
 		// 	myReadFile.read((char*)&recordLength, 4);
@@ -610,7 +668,7 @@ vector< vector<double> > timeSeries(string path)
 			// break;
 			if(i==countII) break;
 		}
-		// printf("done");
+		printf("read file done");
 		return v;
 	}
 	else
@@ -635,48 +693,56 @@ int main(void){
 //	for(int j=0;j<ssize;j++) ts[0][j]=tss[j];
 
 	initD();
-	int start = 0;
-	int samples = miniBatch * T;
 
-	while(1)
+	double sumLoss = 0;
+	int count = 0;
+	int count0 = 0;
+	int countPrint = 0;
+	#pragma omp parallel for schedule(static) num_threads(T)
+	for(int i = 0 ; i < ts.size() ; i++)
 	{
-		
-		if(start + samples >= ts.size()) break;
-		vector<double> sumLoss(T,0);
+		int t = omp_get_thread_num();
 
-		#pragma omp parallel for schedule(static) num_threads(T)
-		for(int t = 0 ; t < T ; t++)
+		initS(t,ts[i]);
+		initZ(t);
+		initBeta(t);
+		normalizeS(t);
+		inference(t);
+		learnDictionary(t);
+		normalizeDictionary(t);
+		printf("-");
+		fflush(0);
+		
+		#pragma omp critical
 		{
-			int t = omp_get_thread_num();
-			int indexStart = start+(t*miniBatch);
-			int indexEnd = start+((t+1)*miniBatch); 
-			
-			//parallel inference
-			for(int i = indexStart; i< indexEnd ; i++)
+			syncDictionary(t);
+			sumLoss += calcLoss(t);
+			count++;
+			if(t==2) count0++;
+			if(t==2 && count0 == miniBatch)
 			{
-				initS(t,ts[i]);
-				initZ(t);
-				initBeta(t);
-				normalizeS(t);
-				sumLoss[t] += calcLoss(t);
-				inference(t);
-				printf(".");
-				fflush(0);
+				char logname[100];
+				sprintf(logname,"res_%06d_%d",countPrint++,(int)(sumLoss/count));
+				reportTesting(t,logname);
+				printf("AvgLoss (%d): %f\n",count,sumLoss/count);
+				count0 = 0 ;
+				sumLoss = 0 ;
 			}
 		}
+	}
 
 		//report Loss
-		double avgLoss = 0;
-		for(int t = 0 ; t < T; t++) avgLoss += sumLoss[t];
-		avgLoss /= T*miniBatch;
-		printf("AvgLoss : %f", avgLoss);
+	// 	double avgLoss = 0;
+		
+	// 	avgLoss /= T*miniBatch;
+	// 	printf("AvgLoss : %f", avgLoss);
 
-		//sync dictionaries
-		syncDictionary();
+	// 	// //sync dictionaries
+	// 	syncDictionary();
 
-		start += (T*miniBatch);
-		break;
-	}
+	// 	start += (T*miniBatch);
+	// 	// break;
+	// }
 
 	// for(int r = 0 ; r < ts.size(); r++)
 	// {
@@ -820,4 +886,3 @@ int main(void){
 //	cout << "loading data "<< endl;
 ////	vector< vector<double> > ts = timeSeries("/Users/nik9618/Desktop/ubt/a40024.txt","II");
 //	cout << "done loading data "<< endl;
-
