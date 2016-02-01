@@ -14,21 +14,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include "omp.h"
 
 #define margin 100 // becareful margin must me at least 3*dsize
-#define s(i) 		S[i+margin]
-#define d(k,i) 		D[k][i+dsize]
-#define nd(k,i) 	ND[k][i+dsize]
-#define z(k,i) 		Z[k][i+margin]
-#define zn(k,i) 	Zn[k][i+margin]
-#define b(k,i) 		B[k][i+margin]
+#define s(t,i) 		S[t][i+margin]
+#define d(t,k,i) 		D[t][k][i+dsize]
+#define nd(t,k,i) 	ND[t][k][i+dsize]
+#define z(t,k,i) 		Z[t][k][i+margin]
+#define zn(t,k,i) 	Zn[t][k][i+margin]
+#define b(t,k,i) 		B[t][k][i+margin]
 #define LAMBDA		0.1
 #define MAXDICITER 	1
 
+int T = 15;
 int dsize = 7;
 int K = 50;
 int ssize = 1250;
-double limitDiffLoss = 0.001
+double limitDiffLoss = 0.001;
 
 
 using namespace std;
@@ -40,59 +42,58 @@ double shrink(double beta, double lamb)
 	return 0;
 }
 
-vector<double> S(ssize+margin,0);
-vector< vector<double> > D(K,vector<double>(dsize*2+1,0));
-vector<double> Zct(K,0);
-vector< vector<double> > ND(K,vector<double>(dsize*2+1,0));
-vector< vector<double> > Z(K,vector<double>(ssize+3*margin,0));
-vector< vector<double> > Zn(K,vector<double>(ssize+3*margin,0));
-vector< vector<double> > B(K,vector<double>(ssize+3*margin,0));
+vector< vector<double> > S(T,vector<double>(ssize+margin,0));
+vector< vector< vector<double> > > D(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
+vector< vector<double> > Zct(T,vector<double>(K,0));
+vector< vector< vector<double> > > ND(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
+vector< vector< vector<double> > > Z(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
+vector< vector< vector<double> > > Zn(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
+vector< vector< vector<double> > > B(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
 vector< vector<double> > ts;
 
-double accumuZct()
+double accumuZct(int t)
 {
 	for(int k=0;k<K;k++)
 	{
 		double ct = 0.f;
 		for(int i = -dsize; i<ssize+dsize ;i++)
 		{
-			ct += fabs(z(k,i));
+			ct += fabs(z(t,k,i));
 		}
-		Zct[k] = (0.99)*Zct[k] + (0.01) * ct;
-		cout << "Zct["<<k<<"]" << Zct[k]<<endl;
+		Zct[t][k] = (0.99)*Zct[t][k] + (0.01) * ct;
+		cout << "Zct["<<k<<"]" << Zct[t][k]<<endl;
 	}
 }
 
-double calcLoss()
+double calcLoss(int t)
 {
 	double loss=0;
 	for(int i =0 ; i < ssize ;i++)
 	{
-		double x = s(i);
+		double x = s(t,i);
 		for(int k = 0 ; k <  K ; k++)
 		{
 			for(int j =-dsize; j<= dsize ;j++)
 			{
-				x-= d(k,j) * z(k,i+j);
+				x-= d(t,k,j) * z(t,k,i+j);
 			}
 		}
 		loss+= x*x;
 	}
-//	if2
 	return loss;
 }
 
-vector<double> reconstruct()
+vector<double> reconstruct(int t)
 {
 	vector<double> res(ssize,0);
 	for(int i =0 ; i < ssize ;i++)
 	{
-		double x = s(i);
+		double x = s(t,i);
 		for(int k = 0 ; k <  K ; k++)
 		{
 			for(int j =-dsize; j<= dsize ;j++)
 			{
-				x-= d(k,j) * z(k,i+j);
+				x-= d(t,k,j) * z(t,k,i+j);
 			}
 		}
 		res[i] = x;
@@ -101,9 +102,9 @@ vector<double> reconstruct()
 	return res;
 }
 
-void reportDZ()
+void reportDZ(int t)
 {
-	vector<double> res = reconstruct();
+	vector<double> res = reconstruct(t);
 	for(int i =0; i< ssize;i++)
 	{
 		cout << res[i] <<"\t";
@@ -111,17 +112,17 @@ void reportDZ()
 	cout<<endl;
 }
 
-double lossDist()
+double lossDist(int t)
 {
 	double loss=0;
 	for(int i =0 ; i < ssize ;i++)
 	{
-		double x = s(i);
+		double x = s(t,i);
 		for(int k = 0 ; k <  K ; k++)
 		{
 			for(int j =-dsize; j<= dsize ;j++)
 			{
-				x-= d(k,j) * z(k,i+j);
+				x-= d(t,k,j) * z(t,k,i+j);
 			}
 		}
 		cout<< fabs(x)<<"\t";
@@ -130,83 +131,82 @@ double lossDist()
 	return loss;
 }
 
-void reportZ()
+void reportZ(int t)
 {
 	for(int k = 0 ; k < K ; k++)
 	{
 		cout << "Z"<<k<<":\t";
 		for(int i = - dsize; i<= ssize + dsize ;i++)
 		{
-			cout << z(k,i) <<"\t";
+			cout << z(t,k,i) <<"\t";
 		}
 		cout<<endl;
 	}
 }
 
-void reportD()
+void reportD(int t)
 {
 	for(int k = 0 ; k < K ; k++)
 	{
 		for(int i = - dsize; i<= dsize ;i++)
 		{
-			cout << d(k,i) <<"\t";
+			cout << d(t,k,i) <<"\t";
 		}
 		cout<<endl;
 	}
 }
 
-void reportB()
+void reportB(int t)
 {
 	for(int k=0;k<K;k++)
 	{
 		for(int i = - dsize; i< ssize + dsize; i++)
 		{
-			cout << b(k,i)<<"\t";
+			cout << b(t,k,i)<<"\t";
 		}
 		cout<<endl;
 	}
 }
 
-void reportS() {
+void reportS(int t) {
 	//init signal
 //	cout << "Signal("<< ssize <<") : ";
 //	for(int i = 0 ; i < ssize;i++)s(i) = in[i];
-	for(int i = 0; i < ssize;i++) cout << s(i) <<"\t";
+	for(int i = 0; i < ssize;i++) cout << s(t,i) <<"\t";
 	cout<<endl<<endl;
 }
 
-void initS(vector<double> in) {
+void initS(int t, vector<double> in) {
 	//init signal
 //	cout << "Signal("<< ssize <<") : ";
-	for(int i = 0 ; i < ssize;i++)s(i) = in[i];
+	for(int i = 0 ; i < ssize;i++)s(t,i) = in[i];
 //	for(int i = -5 ; i < ssize+5 ;i++) cout << s(i) <<" ";
 //	cout<<endl<<endl;
 }
 
-void initZ() {
+void initZ(int t) {
 	//init Z
 	for(int k=0;k<K;k++)
 	{
 		for(int i = -dsize;i<ssize+dsize;i++)
 		{
-			z(k,i) = 0;
+			z(t,k,i) = 0;
 		}
 	}
-	cout<<endl<<endl;
 }
 
-void normalizeDictionary()
+void normalizeDictionary(int t)
 {
 	for(int k = 0 ; k < K ; k++)
 	{
 		double total = 0.f;
 		for(int i = -dsize; i <=dsize ; i++ )
 		{
-			total += d(k,i);
+			total += d(t,k,i);
 		}
 		for(int i = -dsize; i <=dsize ; i++ )
 		{
-			d(k,i) /=total;
+			d(t,k,i) /=total;
 		}
 	}
 }
@@ -217,44 +217,56 @@ void initD()
 	{
 		for(int i=-dsize; i<=dsize; i++)
 		{
-			d(k,i) = 1./(1+2*dsize) + 1./(1+2*dsize)*(rand()%10000)/100000.0;
+			d(0,k,i) = 1./(1+2*dsize) + 1./(1+2*dsize)*(rand()%10000)/100000.0;
 		}
 	}
 	cout << endl;
-	normalizeDictionary();
+	normalizeDictionary(0);
+	// duplicate them to all thread
+	for(int k=0; k < K;k++)
+	{
+		for(int i=-dsize; i<=dsize; i++)
+		{
+			for(int t=1; i<T; t++)
+			{	
+				d(t,k,i) = d(0,k,i);
+			}
+		}
+	}
+	
 	for(int k=0; k < K;k++)
 	{
 		cout << "D"<<k<<":\t";
 		for(int i=-dsize; i<=dsize; i++)
 		{
-			cout << d(k,i)<<"\t";
+			cout << d(0,k,i)<<"\t";
 		}
 		cout << endl;
 	}
 	cout << endl;
 }
 
-void initBeta()
+void initBeta(int t)
 {
 	// init Beta = D*z
 	for(int k=0;k<K;k++)
 	{
 		for(int i = - dsize; i< ssize + dsize; i++)
 		{
-			b(k,i) = 0;
+			b(t,k,i) = 0;
 //			cout << "At : "<< i << " \n ";
 			for(int j =-dsize ; j <= dsize ;j++)
 			{
 				if(i+j <0 || i+j >=ssize) continue;
 //				cout << "s "<<i+j<<"\t d "<<-j <<endl;
-				b(k,i) -= s(i+j) * d(k,-j);
+				b(t,k,i) -= s(t,i+j) * d(t,k,-j);
 			}
 //			cout << b(k,i)<<endl;
 		}
 	}
 }
 
-void inference()
+void inference(int t)
 {
 	// Coordinate Descent
 	int round = 0;
@@ -266,7 +278,7 @@ void inference()
 	{
 		//calculate loss
 		double loss =0 ;
-		loss = calcLoss();
+		loss = calcLoss(t);
 		if(round%20==0)
 		{
 			cout<<"InferZ Loss("<<round<<"):\t";
@@ -294,9 +306,9 @@ void inference()
 				for(int j = -dsize; j<=dsize; j++)
 				{
 					if(i+j < 0 || i+j >= ssize) continue;
-					sqdivider += (d(k,-j) * d(k,-j));
+					sqdivider += (d(t,k,-j) * d(t,k,-j));
 				}
-				zn(k,i) = shrink(-b(k,i),LAMBDA) / sqdivider;
+				zn(t,k,i) = shrink(-b(t,k,i),LAMBDA) / sqdivider;
 			}
 		}
 		//maximum diff Z
@@ -308,7 +320,7 @@ void inference()
 		{
 			for(int i=-dsize ; i < ssize + dsize; i++)
 			{
-				double fs = fabs(zn(k,i) - z(k,i) );
+				double fs = fabs(zn(t,k,i) - z(t,k,i) );
 				if(fs > maxV  && lastK!=k && lastI!=i)
 				{
 					maxV=fs;
@@ -324,7 +336,7 @@ void inference()
 //		cout << "\tnewZ : " << zn(maxK,maxI)<<endl;
 //		reportB();
 		// save old beta
-		double savedBeta = b(maxK,maxI);
+		double savedBeta = b(t,maxK,maxI);
 
 		// update beta
 		for(int i=-2*dsize; i<= 2*dsize; i++)
@@ -342,32 +354,32 @@ void inference()
 						int zind = r+c;
 						if( zind == maxI )
 						{
-							total += d(maxK,c) * d(k,-(r-editing));
+							total += d(t,maxK,c) * d(t,k,-(r-editing));
 //							cout << "sum : d("<<maxK<<","<<c<<")="<< d(maxK,c) <<" * d("<<k<<","<<-(r-editing)<<")"<<d(k,-(r-editing))<<"\n";
 						}
 					}
 				}
-				b(k,editing) += (zn(maxK,maxI)-z(maxK,maxI)) * total;
+				b(t,k,editing) += (zn(t,maxK,maxI)-z(t,maxK,maxI)) * total;
 //				cout << "up : "<< k<<" "<<editing << " : " << b(k,editing) <<endl<<endl;
 			}
 		}
 
 		// restore beta
 //		if(round %10==0) cout << "change z : " << abs(z(maxK,maxI))<<endl;
-		z(maxK,maxI) = zn(maxK,maxI);
-		b(maxK,maxI) = savedBeta;
+		z(t,maxK,maxI) = zn(t,maxK,maxI);
+		b(t,maxK,maxI) = savedBeta;
 	}
 	return;
 }
 
-void learnDictionary()
+void learnDictionary(int t)
 {
 	long double stepsize = 0.00001;
 	long double lastLoss=99999999;
 	int round = 0 ;
 	while(round < MAXDICITER)
 	{
-		double loss = calcLoss();
+		double loss = calcLoss(t);
 		
 		cout << "Loss("<<round<<") :\t";
 		printf("%.6f\n",loss);
@@ -388,12 +400,12 @@ void learnDictionary()
 		vector<long double> precalc(ssize,0);
 		for(int i = 0 ; i < ssize; i++)
 		{
-			precalc[i] = s(i);
+			precalc[i] = s(t,i);
 			for(int k =0 ; k < K ;k++)
 			{
 				for(int j=-dsize;j<=dsize;j++)
 				{
-					precalc[i] -= d(k,j) * z(k,i+j);
+					precalc[i] -= d(t,k,j) * z(t,k,i+j);
 				}
 			}
 		}
@@ -401,10 +413,10 @@ void learnDictionary()
 		{
 			for(int d=-dsize;d<=dsize; d++)
 			{
-				nd(k,d) = 0;
+				nd(t,k,d) = 0;
 				for(int i = 0 ; i < ssize;i++)
 				{
-					nd(k,d) += precalc[i] * -z(k,i+d);
+					nd(t,k,d) += precalc[i] * -z(t,k,i+d);
 				}
 			}
 		}
@@ -412,7 +424,7 @@ void learnDictionary()
 		{
 			for(int ds=-dsize;ds<=dsize; ds++)
 			{
-				d(k,ds) -=  stepsize * nd(k,ds);
+				d(t,k,ds) -=  stepsize * nd(t,k,ds);
 			}
 		}
 	}
@@ -421,21 +433,6 @@ void learnDictionary()
 // ^^^^^^^^^^^^^^^^^^^^^^ OPTIMIZATION PART
 //-----------------------
 // vvvvvvvvvvvvvvvvvvvvvv FILE INPUT PART
-
-std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
-    std::stringstream ss(s);
-    std::string item;
-    while (getline(ss, item, delim)) {
-        elems.push_back(item);
-    }
-    return elems;
-}
-
-std::vector<std::string> split(const std::string &s, char delim) {
-    std::vector<std::string> elems;
-    split(s, delim, elems);
-    return elems;
-}
 
 vector< vector<double> > timeSeries(string path)
 {
@@ -595,98 +592,101 @@ int main(void){
 //	for(int j=0;j<ssize;j++) ts[0][j]=tss[j];
 
 	initD();
-	int r = 0;
-	while(r<ts.size(){
-		initS(ts[r]);
-		initZ();
-		initBeta();
-		cout << "Start Loss( "<<r <<" ): " << calcLoss()<<endl;
-		inference();
-//		reportZ();
-		learnDictionary();
-		normalizeDictionary();
-//		cout<<"D"<<endl;
-//		reportD();
-//		cout<<"S"<<endl;
-//		reportS();
-//		cout<<"DZ"<<endl;
-		reportDZ();
-		lossDist();
+	
+	// #pragma omp parallel for schedule(static) num_threads(T)
+	for(int r = 0 ; r < ts.size(); r++)
+	{
+		// long t = omp_get_thread_num();
+
+// 		initS(t,ts[r]);
+// 		initZ(t);
+// 		initBeta(t);
+// 		cout << "Start Loss( "<<r <<" ): " << calcLoss(t)<<endl;
+// 		inference(t);
+// //		reportZ(t);
+// 		learnDictionary(t);
+// 		normalizeDictionary(t);
+// //		cout<<"D"<<endl;
+// //		reportD(t);
+// //		cout<<"S"<<endl;
+// //		reportS(t);
+// //		cout<<"DZ"<<endl;
+// 		reportDZ(t);
+// 		lossDist(t);
 //		accumuZct();
-		cout << "End Loss( "<<r <<" ): " << calcLoss()<<endl;
+		// cout << "T("<< t <<") "<<"End Loss( "<<r <<" ): " << calcLoss(t)<<endl;
 //		break;
 //		scanf(	"%c",&x);
-		r++;
 	}
 	// ---- done dictionary optimization -----
 
 
 	// ---- generate features----
 
-	cout << "Start producing result" << endl;
+	// cout << "Start producing result" << endl;
 
-	ofstream f;
-	f.open ("results.txt");
+	// ofstream f;
+	// f.open ("results.txt");
 
-	f << "#Information" << endl;
-	f << "SampleSize\t" << ssize<<endl;
-	f << "NSameple\t" << ts.size() <<endl;
-	f << "Nfilter\t" << K <<endl;
-	f << "FilterSize\t" << dsize*2+1<<endl;
+	// f << "#Information" << endl;
+	// f << "SampleSize\t" << ssize<<endl;
+	// f << "NSameple\t" << ts.size() <<endl;
+	// f << "Nfilter\t" << K <<endl;
+	// f << "FilterSize\t" << dsize*2+1<<endl;
 
 
-	f << "#Dictionary" <<endl;
-	for(int k = 0 ; k < K ; k++)
-	{
-		for(int i = - dsize; i<= dsize ;i++)
-		{
-			f << d(k,i) ;
-			if(i!=dsize) f<<",";
-		}
-		f<<endl;
-	}
-	r=0;
-	while(r<ts.size()-10){
-		initS(ts[r]);
-		initZ();
-		initBeta();
-		inference();
+	// f << "#Dictionary" <<endl;
+	// for(int k = 0 ; k < K ; k++)
+	// {
+	// 	for(int i = - dsize; i<= dsize ;i++)
+	// 	{
+	// 		f << d(k,i) ;
+	// 		if(i!=dsize) f<<",";
+	// 	}
+	// 	f<<endl;
+	// }
+	// r=0;
+	// while(r<ts.size()-10){
+	// 	initS(ts[r]);
+	// 	initZ();
+	// 	initBeta();
+	// 	inference();
 
-		f << "#Samples "<< r << endl;
-		cout << "#Samples "<< r << endl;
-		//report S
-		f << "S"<<",";
-		for(int i = 0; i < ssize;i++)
-		{
-			f<< s(i) ;
-			if(i<ssize-1) f<< ",";
-		}
-		f<<endl;
+	// 	f << "#Samples "<< r << endl;
+	// 	cout << "#Samples "<< r << endl;
+	// 	//report S
+	// 	f << "S"<<",";
+	// 	for(int i = 0; i < ssize;i++)
+	// 	{
+	// 		f<< s(i) ;
+	// 		if(i<ssize-1) f<< ",";
+	// 	}
+	// 	f<<endl;
 
-		//report reconstruct
-		vector<double> d = reconstruct();
-		f << "DZ"<<",";
-		for(int i = 0; i < ssize;i++)
-		{
-			f << d[i];
-			if(i<ssize-1) f<< ",";
-		}
-		f<<endl;
+	// 	//report reconstruct
+	// 	vector<double> d = reconstruct();
+	// 	f << "DZ"<<",";
+	// 	for(int i = 0; i < ssize;i++)
+	// 	{
+	// 		f << d[i];
+	// 		if(i<ssize-1) f<< ",";
+	// 	}
+	// 	f<<endl;
 
-		//report features
-		for(int k = 0 ; k < K ; k++)
-		{
-			f << "Z"<<",";
-			for(int i = - dsize; i<= ssize + dsize ;i++)
-			{
-				f << z(k,i);
-				if(i<ssize + dsize)  f<< ",";
-			}
-			f<<endl;
-		}
-		r++;
-	}
-	f.close();
+	// 	//report features
+	// 	for(int k = 0 ; k < K ; k++)
+	// 	{
+	// 		f << "Z"<<",";
+	// 		for(int i = - dsize; i<= ssize + dsize ;i++)
+	// 		{
+	// 			f << z(k,i);
+	// 			if(i<ssize + dsize)  f<< ",";
+	// 		}
+	// 		f<<endl;
+	// 	}
+	// 	r++;
+	// }
+	// f.close();
 }
 
 //int main(void)
