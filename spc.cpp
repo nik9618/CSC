@@ -31,14 +31,14 @@
 using namespace std;
 
 string resultpath = "/home/kanit/anomalydeep/result/";
-int T = 10;
+int T = 28;
 int dsize = 9;
 int K = 40;
 int ssize = 1250;
 double limitDiffLoss = 0.001;
 int maxCoordinateDescentLoop = 1000;
 int miniBatch = 5;
-int maxData = 100000;
+int maxData = 0;
 
 
 using namespace std;
