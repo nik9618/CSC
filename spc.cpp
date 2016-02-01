@@ -17,20 +17,28 @@
 #include "omp.h"
 
 #define margin 100 // becareful margin must me at least 3*dsize
+#define os(t,i) 	OS[t][i+margin]
 #define s(t,i) 		S[t][i+margin]
-#define d(t,k,i) 		D[t][k][i+dsize]
+#define d(t,k,i) 	D[t][k][i+dsize]
+#define dm(k,i) 	DMASTER[k][i+dsize]
 #define nd(t,k,i) 	ND[t][k][i+dsize]
-#define z(t,k,i) 		Z[t][k][i+margin]
+#define z(t,k,i) 	Z[t][k][i+margin]
 #define zn(t,k,i) 	Zn[t][k][i+margin]
-#define b(t,k,i) 		B[t][k][i+margin]
+#define b(t,k,i) 	B[t][k][i+margin]
 #define LAMBDA		0.1
 #define MAXDICITER 	1
 
-int T = 15;
-int dsize = 7;
-int K = 50;
+using namespace std;
+
+string resultpath = "/home/kanit/anomalydeep/result/";
+int T = 10;
+int dsize = 9;
+int K = 40;
 int ssize = 1250;
 double limitDiffLoss = 0.001;
+int maxCoordinateDescentLoop = 1000;
+int miniBatch = 5;
+int maxData = 100000;
 
 
 using namespace std;
@@ -43,7 +51,9 @@ double shrink(double beta, double lamb)
 }
 
 vector< vector<double> > S(T,vector<double>(ssize+margin,0));
+vector< vector<double> > OS(T,vector<double>(ssize+margin,0));
 vector< vector< vector<double> > > D(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
+vector< vector<double> > DMASTER(K,vector<double>(dsize*2+1,0));
 vector< vector<double> > Zct(T,vector<double>(K,0));
 vector< vector< vector<double> > > ND(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
 vector< vector< vector<double> > > Z(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
@@ -110,6 +120,46 @@ void reportDZ(int t)
 		cout << res[i] <<"\t";
 	}
 	cout<<endl;
+}
+
+void reportTesting(int t, string name)
+{
+	ofstream myfile;
+	myfile.open (resultpath + name +".txt");
+	
+	myfile << "OS" << "=[";	
+	for(int i = 0 ; i < ssize ; i++)
+	{
+		myfile << os(t,i)<<" ";
+	}
+	myfile << "]\n";
+	
+	myfile << "S" << "=[";	
+	for(int i = 0 ; i < ssize ; i++)
+	{
+		myfile << s(t,i)<<" ";
+	}
+	myfile << "]\n";
+	
+	vector<double> d = reconstruct(t);
+	myfile << "DZ" << "=[";	
+	for(int i = 0 ; i < ssize ; i++)
+	{
+		myfile << d[i] <<" ";
+	}
+	myfile << "]\n";
+
+	for(int i = 0 ; i < K ; i++)
+	{
+		myfile << "D" << i << "=[";	
+
+		for (int j = -dsize; j<=dsize ;j++)
+		{
+			myfile << d(t,i,j)<<" ";
+		}
+		myfile << "]\n";
+	}
+	myfile.close();
 }
 
 double lossDist(int t)
@@ -179,9 +229,32 @@ void reportS(int t) {
 void initS(int t, vector<double> in) {
 	//init signal
 //	cout << "Signal("<< ssize <<") : ";
-	for(int i = 0 ; i < ssize;i++)s(t,i) = in[i];
+	for(int i = 0 ; i < ssize;i++)
+	{
+		s(t,i) = in[i];
+		os(t,i) = in[i];
+	}
+
 //	for(int i = -5 ; i < ssize+5 ;i++) cout << s(i) <<" ";
 //	cout<<endl<<endl;
+}
+
+void normalizeS(int t)
+{
+	double sum = 0;
+	double sum2 = 0;
+	for(int i = 0 ; i < ssize;i++)
+	{
+		sum+=s(t,i);
+		sum2 =(s(t,i)*s(t,i))+sum2;
+	} 
+	double mean = sum/ssize;
+	double std = sqrt(sum2/ssize-mean*mean);
+	if(std ==0) return;
+	for(int i = 0 ; i < ssize;i++)
+	{
+		s(t,i) = ((s(t,i)-mean)/std);
+	}
 }
 
 void initZ(int t) {
@@ -191,6 +264,20 @@ void initZ(int t) {
 		for(int i = -dsize;i<ssize+dsize;i++)
 		{
 			z(t,k,i) = 0;
+		}
+	}
+}
+void syncDictionary(int t)
+{
+	for(int k = 0 ; k < K ; k++)
+	{
+		for(int i = -dsize; i <=dsize ; i++ )
+		{
+			for(int t = 0; t < T ; t++ )
+			{
+				dm(k,i) = 0.9*dm(k,i) + 0.1*d(t,k,i);
+				d(t,k,i) = dm(k,i);
+			}
 		}
 	}
 }
@@ -220,30 +307,29 @@ void initD()
 			d(0,k,i) = 1./(1+2*dsize) + 1./(1+2*dsize)*(rand()%10000)/100000.0;
 		}
 	}
-	cout << endl;
 	normalizeDictionary(0);
 	// duplicate them to all thread
 	for(int k=0; k < K;k++)
 	{
 		for(int i=-dsize; i<=dsize; i++)
 		{
-			for(int t=1; i<T; t++)
+			for(int t=1; t<T; t++)
 			{	
 				d(t,k,i) = d(0,k,i);
 			}
 		}
 	}
 	
-	for(int k=0; k < K;k++)
-	{
-		cout << "D"<<k<<":\t";
-		for(int i=-dsize; i<=dsize; i++)
-		{
-			cout << d(0,k,i)<<"\t";
-		}
-		cout << endl;
-	}
-	cout << endl;
+	// for(int k=0; k < K;k++)
+	// {
+	// 	cout << "D"<<k<<":\t";
+	// 	for(int i=-dsize; i<=dsize; i++)
+	// 	{
+	// 		cout << d(0,k,i)<<"\t";
+	// 	}
+	// 	cout << endl;
+	// }
+	// cout << endl;
 }
 
 void initBeta(int t)
@@ -279,18 +365,20 @@ void inference(int t)
 		//calculate loss
 		double loss =0 ;
 		loss = calcLoss(t);
-		if(round%20==0)
-		{
-			cout<<"InferZ Loss("<<round<<"):\t";
-			printf("%.5f\n",loss);
-		}
+		// if(round%20==0)
+		// {
+		// 	cout<<"InferZ Loss("<<round<<"):\t";
+		// 	printf("%.5f\n",loss);
+		// }
 		round++;
 
 		if(fabs(lastLoss-loss) < 0.1)
 		{
-			printf("end ! %.5f %.5f\n",loss,lastLoss);
+			// printf("end ! %.5f %.5f\n",loss,lastLoss);
 			return;
 		}
+		if(round  > maxCoordinateDescentLoop ) break;
+		if(loss==0) break;
 //		scanf("%c",&x);
 
 //		reportZ();
@@ -381,11 +469,12 @@ void learnDictionary(int t)
 	{
 		double loss = calcLoss(t);
 		
-		cout << "Loss("<<round<<") :\t";
-		printf("%.6f\n",loss);
+		// cout << "Loss("<<round<<") :\t";
+		// printf("%.6f\n",loss);
 		round++;
 
 		if(fabs(loss-lastLoss) < limitDiffLoss) return;
+		if(loss<0.0001) return;
 //		if(loss>lastLoss)
 //		{
 //			stepsize/=2;
@@ -468,8 +557,9 @@ vector< vector<double> > timeSeries(string path)
 		short shABP[1250];
 
 		//fixed for fast !
-		// countII = 7260032;
-		countII = 100000;
+		countII = 7260032;
+		if(maxData != 0 )
+			countII = maxData;
 		// while (!myReadFile.eof())
   //   	{
 		// 	myReadFile.read((char*)&recordLength, 4);
@@ -580,7 +670,7 @@ vector< vector<double> > timeSeries(string path)
 
 int main(void){
 
-	ts = timeSeries("/home/kanit/npz/d-8634");
+	ts = timeSeries("/home/kanit/d-8634");
 
 	// for(int i = 0; i < 1250;i++)
 	// {
@@ -592,17 +682,67 @@ int main(void){
 //	for(int j=0;j<ssize;j++) ts[0][j]=tss[j];
 
 	initD();
-	
-	// #pragma omp parallel for schedule(static) num_threads(T)
-	for(int r = 0 ; r < ts.size(); r++)
-	{
-		// long t = omp_get_thread_num();
 
-// 		initS(t,ts[r]);
-// 		initZ(t);
-// 		initBeta(t);
-// 		cout << "Start Loss( "<<r <<" ): " << calcLoss(t)<<endl;
-// 		inference(t);
+	double sumLoss = 0;
+	int count = 0;
+	int count0 = 0;
+	int countPrint = 0;
+	#pragma omp parallel for schedule(static) num_threads(T)
+	for(int i = 0 ; i < ts.size() ; i++)
+	{
+		int t = omp_get_thread_num();
+
+		initS(t,ts[i]);
+		initZ(t);
+		initBeta(t);
+		normalizeS(t);
+		inference(t);
+		learnDictionary(t);
+		normalizeDictionary(t);
+		printf(".");
+		fflush(0);
+		
+		#pragma omp critical
+		{
+			syncDictionary(t);
+			sumLoss += calcLoss(t);
+			count++;
+			if(t==2) count0++;
+			if(t==2 && count0 == miniBatch)
+			{
+				// report dict 
+				reportTesting(t,"res_"+to_string(countPrint) + "_"+to_string((int)(sumLoss/count)));
+
+				// report loss
+				printf("AvgLoss (%d): %f\n",count,sumLoss/count);
+				count0 = 0 ;
+				sumLoss = 0 ;
+				countPrint++;
+			}
+		}
+	}
+
+		//report Loss
+	// 	double avgLoss = 0;
+		
+	// 	avgLoss /= T*miniBatch;
+	// 	printf("AvgLoss : %f", avgLoss);
+
+	// 	// //sync dictionaries
+	// 	syncDictionary();
+
+	// 	start += (T*miniBatch);
+	// 	// break;
+	// }
+
+	// for(int r = 0 ; r < ts.size(); r++)
+	// {
+		// initS(t,ts[r]);
+		// initZ(t);
+		// initBeta(t);
+		// normalizeS(t);
+		// // cout << "Start Loss( "<<r <<" ): " << calcLoss(t)<<endl;
+		// inference(t);
 // //		reportZ(t);
 // 		learnDictionary(t);
 // 		normalizeDictionary(t);
@@ -617,7 +757,7 @@ int main(void){
 		// cout << "T("<< t <<") "<<"End Loss( "<<r <<" ): " << calcLoss(t)<<endl;
 //		break;
 //		scanf(	"%c",&x);
-	}
+	// }
 	// ---- done dictionary optimization -----
 
 
