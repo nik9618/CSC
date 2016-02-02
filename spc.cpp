@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <cmath>
 #include "omp.h"
 
 #define margin 100 // becareful margin must me at least 3*dsize
@@ -24,8 +25,8 @@
 using namespace std;
 
 string resultpath = "/home/kanit/anomalydeep/result/";
-int T = 20;
-int dsize = 9;
+int T = 16;
+int dsize = 4;
 int K = 40;
 int ssize = 1250;
 double limitDiffLoss = 0.001;
@@ -120,13 +121,13 @@ void reportTesting(int t, string name)
 	ofstream myfile;
 	myfile.open (resultpath + name +".txt");
 	
-	myfile << "OS" << "=[";	
-	for(int i = 0 ; i < ssize ; i++)
-	{
-		myfile << os(t,i)<<" ";
-	}
-	myfile << "]\n";
-	
+	// myfile << "OS" << "=[";	
+	// for(int i = 0 ; i < ssize ; i++)
+	// {
+	// 	myfile << os(t,i)<<" ";
+	// }
+	// myfile << "]\n";
+	myfile << "loss="<<calcLoss(t)<<"\n";
 	myfile << "S" << "=[";	
 	for(int i = 0 ; i < ssize ; i++)
 	{
@@ -152,16 +153,16 @@ void reportTesting(int t, string name)
 	}
 	myfile << "]\n";
 
+	myfile << "D" << "=[";
 	for(int i = 0 ; i < K ; i++)
 	{
-		myfile << "D" << i << "=[";	
-
 		for (int j = -dsize; j<=dsize ;j++)
 		{
 			myfile << d(t,i,j)<<" ";
 		}
-		myfile << "]\n";
+		myfile << ";";
 	}
+	myfile << "]\n";
 	myfile.close();
 }
 
@@ -242,6 +243,15 @@ void initS(int t, vector<double> in) {
 //	cout<<endl<<endl;
 }
 
+int validateS(int t)
+{
+	for(int i = 0 ; i < ssize;i++)
+	{
+		if(s(t,i) != s(t,i)) return 0;
+	}
+	return 1;
+}
+
 void normalizeS(int t)
 {
 	double sum = 0;
@@ -273,14 +283,40 @@ void initZ(int t) {
 }
 void syncDictionary(int t)
 {
+	int anyNan = 0;
 	for(int k = 0 ; k < K ; k++)
 	{
 		for(int i = -dsize; i <=dsize ; i++ )
 		{
-			for(int t = 0; t < T ; t++ )
+			if(d(t,k,i) != d(t,k,i)) anyNan++;
+		}
+	}
+	if(anyNan == 0)
+	{
+		printf(".");
+		for(int k = 0 ; k < K ; k++)
+		{
+			for(int i = -dsize; i <=dsize ; i++ )
 			{
-				dm(k,i) = 0.95*dm(k,i) + 0.05*d(t,k,i);
-				d(t,k,i) = dm(k,i);
+				for(int t = 0; t < T ; t++ )
+				{
+					dm(k,i) = 0.9*dm(k,i) + 0.1*d(t,k,i);
+					d(t,k,i) = dm(k,i);
+				}
+			}
+		}
+	}
+	else
+	{
+		printf("x");
+		for(int k = 0 ; k < K ; k++)
+		{
+			for(int i = -dsize; i <=dsize ; i++ )
+			{
+				for(int t = 0; t < T ; t++ )
+				{
+					d(t,k,i) = dm(k,i);
+				}
 			}
 		}
 	}
@@ -312,11 +348,12 @@ void initD()
 	{
 		for(int i=-dsize; i<=dsize; i++)
 		{
-			d(0,k,i) = 1./(1+2*dsize) + 1./(1+2*dsize)*(rand()%10000)/100000.0;
+			// d(0,k,i) = 1./(1+2*dsize) + 1./(1+2*dsize)*(rand()%10000)/1000000.0;
+			d(0,k,i) = 1./(1+2*dsize) + 1./(1+2*dsize)*(rand()%10000)/1000000.0;
 		}
 	}
 	
-	normalizeDictionary(0);
+	// normalizeDictionary(0);
 	
 	// duplicate them to all thread
 	for(int k=0; k < K;k++)
@@ -524,6 +561,8 @@ void learnDictionary(int t)
 		{
 			for(int ds=-dsize;ds<=dsize; ds++)
 			{
+				if(nd(t,k,ds) > 1000) nd(t,k,ds) = 1000;
+				if(nd(t,k,ds) < -1000) nd(t,k,ds) = -1000;
 				d(t,k,ds) -=  stepsize * nd(t,k,ds);
 			}
 		}
@@ -621,6 +660,7 @@ vector< vector<double> > timeSeries(string path)
 		myReadFile.seekg(0, ios::beg);
 
 		vector< vector<double> > v(countII,vector<double>(1250,0));
+
 		int i = 0;
 		while (!myReadFile.eof())
     	{
@@ -680,7 +720,6 @@ vector< vector<double> > timeSeries(string path)
 }
 
 int main(void){
-
 	ts = timeSeries("/home/kanit/npz/d-8634");
 
 	// for(int i = 0; i < 1250;i++)
@@ -706,32 +745,40 @@ int main(void){
 		initS(t,ts[i]);
 		initZ(t);
 		initBeta(t);
-		normalizeS(t);
+		// normalizeS(t);
 		inference(t);
 		learnDictionary(t);
-		normalizeDictionary(t);
+		// normalizeDictionary(t);
 		printf("-");
 		fflush(0);
 		
 		#pragma omp critical
 		{
-			syncDictionary(t);
-			sumLoss += calcLoss(t);
-			count++;
-			if(t==2) count0++;
-			if(t==2 && count0 == miniBatch)
+			double loss = calcLoss(t);
+			if(loss == loss)
 			{
-				char logname[100];
-				sprintf(logname,"res_%06d_%d",countPrint++,(int)(sumLoss/count));
-				reportTesting(t,logname);
-				printf("AvgLoss (%d): %f\n",count,sumLoss/count);
-				count0 = 0 ;
-				sumLoss = 0 ;
+				sumLoss += loss;
+				count++;
+				syncDictionary(t);
+				if(t==2) count0++;
+				if(t==2 && count0 == miniBatch)
+				{
+					char logname[100];
+					sprintf(logname,"res_%06d_%d",countPrint++,(int)(sumLoss/count));
+					reportTesting(t,logname);
+					printf("AvgLoss (%d): %f\n",count,sumLoss/count);
+					count0 = 0 ;
+					sumLoss = 0 ;
+				}
+			}
+			else
+			{
+				printf("s");
 			}
 		}
 	}
 
-		//report Loss
+	//  report Loss
 	// 	double avgLoss = 0;
 		
 	// 	avgLoss /= T*miniBatch;
