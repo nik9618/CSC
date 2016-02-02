@@ -663,7 +663,7 @@ vector< vector<double> > timeSeries(string path)
 
 		int i = 0;
 		while (!myReadFile.eof())
-    	{
+		{
 			myReadFile.read((char*)&recordLength, 4);
 
 			myReadFile.read((char*)&sigName, 32);
