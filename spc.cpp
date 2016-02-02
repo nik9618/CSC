@@ -25,14 +25,14 @@
 using namespace std;
 
 string resultpath = "/home/kanit/anomalydeep/result/";
-int T = 16;
+int T = 30;
 int dsize = 4;
 int K = 40;
 int ssize = 1250;
 double limitDiffLoss = 0.001;
 int maxCoordinateDescentLoop = 1000;
 int miniBatch = 5;
-int maxData = 0;
+int maxData = 4000000;
 
 
 using namespace std;
@@ -732,6 +732,7 @@ int main(void){
 //	for(int j=0;j<ssize;j++) ts[0][j]=tss[j];
 
 	initD();
+	// importDictionary();
 
 	double sumLoss = 0;
 	int count = 0;
@@ -777,159 +778,22 @@ int main(void){
 			}
 		}
 	}
-
-	//  report Loss
-	// 	double avgLoss = 0;
-		
-	// 	avgLoss /= T*miniBatch;
-	// 	printf("AvgLoss : %f", avgLoss);
-
-	// 	// //sync dictionaries
-	// 	syncDictionary();
-
-	// 	start += (T*miniBatch);
-	// 	// break;
-	// }
-
-	// for(int r = 0 ; r < ts.size(); r++)
-	// {
-		// initS(t,ts[r]);
-		// initZ(t);
-		// initBeta(t);
-		// normalizeS(t);
-		// // cout << "Start Loss( "<<r <<" ): " << calcLoss(t)<<endl;
-		// inference(t);
-// //		reportZ(t);
-// 		learnDictionary(t);
-// 		normalizeDictionary(t);
-// //		cout<<"D"<<endl;
-// //		reportD(t);
-// //		cout<<"S"<<endl;
-// //		reportS(t);
-// //		cout<<"DZ"<<endl;
-// 		reportDZ(t);
-// 		lossDist(t);
-//		accumuZct();
-		// cout << "T("<< t <<") "<<"End Loss( "<<r <<" ): " << calcLoss(t)<<endl;
-//		break;
-//		scanf(	"%c",&x);
-	// }
-	// ---- done dictionary optimization -----
-
-
-	// ---- generate features----
-
-	// cout << "Start producing result" << endl;
-
-	// ofstream f;
-	// f.open ("results.txt");
-
-	// f << "#Information" << endl;
-	// f << "SampleSize\t" << ssize<<endl;
-	// f << "NSameple\t" << ts.size() <<endl;
-	// f << "Nfilter\t" << K <<endl;
-	// f << "FilterSize\t" << dsize*2+1<<endl;
-
-
-	// f << "#Dictionary" <<endl;
-	// for(int k = 0 ; k < K ; k++)
-	// {
-	// 	for(int i = - dsize; i<= dsize ;i++)
-	// 	{
-	// 		f << d(k,i) ;
-	// 		if(i!=dsize) f<<",";
-	// 	}
-	// 	f<<endl;
-	// }
-	// r=0;
-	// while(r<ts.size()-10){
-	// 	initS(ts[r]);
-	// 	initZ();
-	// 	initBeta();
-	// 	inference();
-
-	// 	f << "#Samples "<< r << endl;
-	// 	cout << "#Samples "<< r << endl;
-	// 	//report S
-	// 	f << "S"<<",";
-	// 	for(int i = 0; i < ssize;i++)
-	// 	{
-	// 		f<< s(i) ;
-	// 		if(i<ssize-1) f<< ",";
-	// 	}
-	// 	f<<endl;
-
-	// 	//report reconstruct
-	// 	vector<double> d = reconstruct();
-	// 	f << "DZ"<<",";
-	// 	for(int i = 0; i < ssize;i++)
-	// 	{
-	// 		f << d[i];
-	// 		if(i<ssize-1) f<< ",";
-	// 	}
-	// 	f<<endl;
-
-	// 	//report features
-	// 	for(int k = 0 ; k < K ; k++)
-	// 	{
-	// 		f << "Z"<<",";
-	// 		for(int i = - dsize; i<= ssize + dsize ;i++)
-	// 		{
-	// 			f << z(k,i);
-	// 			if(i<ssize + dsize)  f<< ",";
-	// 		}
-	// 		f<<endl;
-	// 	}
-	// 	r++;
-	// }
-	// f.close();
 }
 
-//int main(void)
-//{
-//	char x ;
-//	int r = 1;
-//	initD();
-//
-//	while(true)
-//	{
-//		r++;
-//		vector<double> ts(ssize,2);
-//		for(int i =0  ; i < 15; i++)
-//		{
-//			ts[30+i]=2+i;
-//		}
-//		for(int i = 15;i<30;i++)
-//		{
-//			ts[30+i]=2+30-i;
-//		}
-////		for(int i = 0;i<ssize;i++)
-////		{
-////			ts[i]/=40.;
-////		}
-//		initS(ts);
-//		initZ();
-//		cout << "Start Loss( "<<r <<" ): " << calcLoss()<<endl;
-//
-//		initBeta();
-//		inference();
-////		reportZ();
-//		learnDictionary();
-//		normalizeDictionary();
-//		reportD();
-//		cout << "End Loss( "<<r <<" ): " << calcLoss()<<endl;
-//		if(r%100==0)scanf("%c",&x);
-//	}
-//}
-
-//	for(int i =0 ; i < ts.size() ; i++)
-//	{
-//		for(int j = 0 ;j < SAMPLESIZE ;j++)
-//		{
-//			cout << ts[i][j]<<"," ;
-//		}
-//		cout << endl;
-//	}
-//	cout << "loading data "<< endl;
-////	vector< vector<double> > ts = timeSeries("/Users/nik9618/Desktop/ubt/a40024.txt","II");
-//	cout << "done loading data "<< endl;
+void importDictionary()
+{
+	double impDict[K*(dsize*2+1)] = {1000.0, 2.0, 3.4, 17.0, 50.0};
+	
+	for(int k=0; k < K;k++)
+	{
+		for(int i=-dsize; i<=dsize; i++)
+		{
+			for(int t=1; t<T; t++)
+			{
+				d(t,k,i) = impDict[k*(dsize*2+1) + i+dsize];
+			}
+			dm(k,i) = impDict[k*(dsize*2+1) + i+dsize];
+			printf("%f\t",d(0,k,i));
+		}
+	}
+}
