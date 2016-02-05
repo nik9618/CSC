@@ -22,16 +22,15 @@
 #define z(t,k,i) 	Z[t][k][i+margin]
 #define zn(t,k,i) 	Zn[t][k][i+margin]
 #define b(t,k,i) 	B[t][k][i+margin]
-#define LAMBDA		0.01//0.5
 
-
-#define T 1
+#define T 3
 #define K 40
-#define dsize 7
 #define ssize 1250
 #define importDict false
-#define maxData 10000
+#define maxData 30000
 
+double LAMBDA = 0.05;
+int dsize = 4;
 
 double dictstepsize = 0.00001;
 int dictRound = 5;
@@ -39,25 +38,23 @@ int dictRound = 5;
 int inferenceMinRound = 100;
 int maxCoordinateDescentLoop = 6000;
 double diffLossSPC = 0.0002;
-int miniBatch = 1;
-double impDict[K*(dsize*2+1)];
+int miniBatch = 5;
 
 using namespace std;
 
-string resultpath = "/home/kanit/anomalydeep/result/";
+string resultpath = "/home/kanit/anomalydeep/";
 
-vector< vector<double> > S(T,vector<double>(ssize+margin,0));
-vector< vector<double> > OS(T,vector<double>(ssize+margin,0));
-vector< vector< vector<double> > > D(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
-vector< vector<double> > DMASTER(K,vector<double>(dsize*2+1,0));
-vector< vector< vector<double> > > Z(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
-vector< vector< vector<double> > > B(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
+vector< vector<double> > S;
+vector< vector<double> > OS;
+vector< vector< vector<double> > > D;
+vector< vector<double> > DMASTER;
+vector< vector< vector<double> > > Z;
+vector< vector< vector<double> > > B;
 
-vector< vector<double> > Zct(T,vector<double>(K,0));
-vector< vector< vector<double> > > ND(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
-vector< vector< vector<double> > > Zn(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
+vector< vector<double> > Zct;
+vector< vector< vector<double> > > ND;
+vector< vector< vector<double> > > Zn;
 
-vector< vector<double> > ts;
 
 double shrink(double beta, double lamb)
 {
@@ -246,10 +243,15 @@ vector< vector<double> > timeSeries(string path)
 	}
 }
 
-void reportTesting(int t, string name,int infround)
+void reportTesting(int t, string folder, string name,int infround)
 {
 	ofstream myfile;
-	myfile.open (resultpath + name +".txt");
+	
+	std::stringstream ss;
+	ss <<"mkdir -p "<< resultpath << folder;
+	std::string genfolder = ss.str();
+	int x = system(genfolder.c_str());
+	myfile.open (resultpath + folder + "/" + name +".txt");
 	
 	// myfile << "OS" << "=[";	
 	// for(int i = 0 ; i < ssize ; i++)
@@ -571,9 +573,9 @@ int learnDictionary(int t)
 			if(loss > 15)
 			{
 				special++;
-				if(special == 30)
+				dstepsize = dictstepsize/5.;
+				if(special == 120)
 				{
-					dstepsize = dstepsize*0.9;
 					break;
 				}
 			}
@@ -587,14 +589,31 @@ int learnDictionary(int t)
 	return round;
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
+	LAMBDA = atof(argv[1]);
+	dsize = atoi(argv[2]);
+
+	printf("lambda = %f\tdsize=%d\n",LAMBDA,dsize);
+
+	S = vector< vector<double> >(T,vector<double>(ssize+margin,0));
+	OS = vector< vector<double> >(T,vector<double>(ssize+margin,0));
+	D = vector< vector< vector<double> > >(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
+	DMASTER = vector< vector<double> >(K,vector<double>(dsize*2+1,0));
+	Z = vector< vector< vector<double> > >(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
+	B = vector< vector< vector<double> > >(T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
+
+	Zct = vector< vector<double> >(T,vector<double>(K,0));
+	ND = vector< vector< vector<double> > >(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
+	Zn = vector< vector< vector<double> > > (T,vector< vector<double> >(K,vector<double>(ssize+3*margin,0)));
+
 	vector< vector<double> > ts  = timeSeries("/home/kanit/npz/d-8634");
 	vector<int> rd = shuffleArray(ts.size());
 	initD();
 
 	int count0 = 0;
 	int countPrint = 0;
+	int total = 0;
 	#pragma omp parallel for num_threads(T)
 	for(int i = 0 ; i < ts.size() ; i++)
 	{
@@ -613,16 +632,20 @@ int main(void)
 		{
 			syncDictionary(t);
 			double sLoss = calcLoss(t);
-			printf("loss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\n",baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss);
+			printf("%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\n",total++,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss);
 
 			if(t==0)
 			{
 				count0++;
-				if(count0 == 5)
+				if(count0 == miniBatch)
 				{
 					char logname[100];
 					sprintf(logname,"res_%06d_%d",countPrint++,(int)(dLoss));
-					reportTesting(t,logname,inferRound);
+					char foldname[100];
+					sprintf(foldname,"res_lb%f_ds%d",LAMBDA,dsize);
+					reportTesting(t,foldname, logname,inferRound);
+					printf("*\n");
+					count0=0;
 				}
 			}
 		}
