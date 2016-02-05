@@ -23,14 +23,15 @@
 #define zn(t,k,i) 	Zn[t][k][i+margin]
 #define b(t,k,i) 	B[t][k][i+margin]
 
-#define T 3
 #define K 40
 #define ssize 1250
 #define importDict false
-#define maxData 30000
+#define maxData 1000000
+
 
 double LAMBDA = 0.05;
 int dsize = 4;
+int T = 4;
 
 double dictstepsize = 0.00001;
 int dictRound = 5;
@@ -381,8 +382,8 @@ void normalizeS(int t)
 	if(std ==0) return;
 	for(int i = 0 ; i < ssize;i++)
 	{
-		// s(t,i) = ((s(t,i)-mean)/std);
-		s(t,i) = ((s(t,i)-mean));
+		s(t,i) = ((s(t,i)-mean)/std);
+		// s(t,i) = ((s(t,i)-mean));
 	}
 }
 
@@ -402,12 +403,35 @@ void normalizeDictionary(int t)
 
 void syncDictionary(int t)
 {
+	int isNan=0;
 	for(int k = 0 ; k < K ; k++)
 	{
 		for(int i = -dsize; i <=dsize ; i++ )
 		{
+			
+			if(d(t,k,i)!=d(t,k,i))isNan=1;
+		}
+	}
+
+	if(isNan==0)
+	{
+		for(int k = 0 ; k < K ; k++)
+		{
+			for(int i = -dsize; i <=dsize ; i++ )
+			{
+				dm(k,i) = 0.9*dm(k,i) + 0.1*d(t,k,i);
+			}
+		}
+	}
+	else
+	{
+		printf("NAN\n");
+	}
 	
-			dm(k,i) = 0.9*dm(k,i) + 0.1*d(t,k,i);
+	for(int k = 0 ; k < K ; k++)
+	{
+		for(int i = -dsize; i <=dsize ; i++ )
+		{
 			d(t,k,i) = dm(k,i);
 		}
 	}
@@ -561,7 +585,8 @@ int learnDictionary(int t)
 				d(t,k,ds) -=  dstepsize * nd(t,k,ds);
 			}
 		}
-		
+		normalizeDictionary(t);
+
 		round++;
 		// printf("DLoss = %f %f = %f\n",lastLoss,loss,loss-lastLoss);
 		// if(fabs(loss-lastLoss) < limitDiffLossDict) break;
@@ -593,8 +618,9 @@ int main(int argc, char** argv)
 {
 	LAMBDA = atof(argv[1]);
 	dsize = atoi(argv[2]);
+	T = atoi(argv[3]);
 
-	printf("lambda = %f\tdsize=%d\n",LAMBDA,dsize);
+	printf("lambda = %f\tdsize=%d\tT=%d\n",LAMBDA,dsize,T);
 
 	S = vector< vector<double> >(T,vector<double>(ssize+margin,0));
 	OS = vector< vector<double> >(T,vector<double>(ssize+margin,0));
