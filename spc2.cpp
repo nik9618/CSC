@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <iterator>
 #include <iomanip>
+#include <cfloat>
 
 #define margin 		100 // becareful margin must me at least 3*dsize
 #define os(t,i) 	OS[t][i+margin]
@@ -23,23 +24,46 @@
 #define zn(t,k,i) 	Zn[t][k][i+margin]
 #define b(t,k,i) 	B[t][k][i+margin]
 
-#define K 40
-#define ssize 1250
 #define importDict false
 #define maxData 1000000
+#define sigSize 1250
+#define bandFilterSize 47 //@ 2 hz
+#define MAFilterSize 5 
+#define MAFilter 0.20 
 
-
+//TO TUNE
+// lambda dictsize num_dict
 double LAMBDA = 0.05;
 int dsize = 4;
 int T = 4;
+int K = 40;
 
+int ssize = sigSize - bandFilterSize - MAFilterSize + 2;
 double dictstepsize = 0.00001;
 int dictRound = 5;
-
 int inferenceMinRound = 100;
-int maxCoordinateDescentLoop = 6000;
-double diffLossSPC = 0.0002;
+int maxCoordinateDescentLoop = 2000;
+// double diffLossSPC = 0.0002;
+
 int miniBatch = 5;
+
+
+double filter[47] = {-8.15926288e-04,  -9.76750628e-04,  -1.26060467e-03,
+        -1.69918730e-03,  -2.32002576e-03,  -3.14491716e-03,
+        -4.18856455e-03,  -5.45747532e-03,  -6.94917936e-03,
+        -8.65181110e-03,  -1.05440838e-02,  -1.25956675e-02,
+        -1.47679632e-02,  -1.70152499e-02,  -1.92861613e-02,
+        -2.15254358e-02,  -2.36758695e-02,  -2.56803928e-02,
+        -2.74841826e-02,  -2.90367233e-02,  -3.02937271e-02,
+        -3.12188334e-02,  -3.17850122e-02,   9.67262288e-01,
+        -3.17850122e-02,  -3.12188334e-02,  -3.02937271e-02,
+        -2.90367233e-02,  -2.74841826e-02,  -2.56803928e-02,
+        -2.36758695e-02,  -2.15254358e-02,  -1.92861613e-02,
+        -1.70152499e-02,  -1.47679632e-02,  -1.25956675e-02,
+        -1.05440838e-02,  -8.65181110e-03,  -6.94917936e-03,
+        -5.45747532e-03,  -4.18856455e-03,  -3.14491716e-03,
+        -2.32002576e-03,  -1.69918730e-03,  -1.26060467e-03,
+        -9.76750628e-04,  -8.15926288e-04};
 
 using namespace std;
 
@@ -122,7 +146,7 @@ void reportB(int t)
 
 void reportS(int t) 
 {
-	for(int i = 0; i < ssize;i++) cout << s(t,i) <<"\t";
+	for(int i = 0; i < ssize;i++) cout << s(t,i) <<" ";
 	cout<<endl<<endl;
 }
 
@@ -190,13 +214,13 @@ vector< vector<double> > timeSeries(string path)
 
 		//fixed for fast !
 		countII = 7260032;
-		if(maxData != 0 )
-			countII = maxData;
 
 		myReadFile.seekg(0, ios::beg);
-		vector< vector<double> > v(countII,vector<double>(1250,0));
+		vector< vector<double> > v(maxData,vector<double>(1250,0));
 
 		int i = 0;
+		int placeIndex =0;
+		int takeEvery = countII / maxData;
 		while (!myReadFile.eof())
 		{
 			myReadFile.read((char*)&recordLength, 4);
@@ -224,16 +248,20 @@ vector< vector<double> > timeSeries(string path)
 
 			if(hasII==1)
 			{
-				for(int j=0; j< 1250;j++)
+				if(i % takeEvery == 0 && placeIndex < maxData)
 				{
-					v[i][j] = (shII[j] - baseII) * gainII;
+					for(int j=0; j< 1250;j++)
+					{
+						v[placeIndex][j] = (shII[j] - baseII) * gainII;
+					}
+					placeIndex++;
 				}
 				i++;
 			}
 			// break;
 			if(i==countII) break;
 		}
-		printf("read file done(%d)\n",countII);
+		printf("read file done(%d)\n",maxData);
 		return v;
 	}
 	else
@@ -293,6 +321,16 @@ void reportTesting(int t, string folder, string name,int infround)
 	
 	// for(int k=0;k<K;k++)
 	// {
+	// 	myfile << "ND" << k << "=["<<setprecision(3);	
+	// 	for(int i=-dsize;i<=dsize; i++)
+	// 	{
+	// 		myfile << nd(t,k,i) <<" ";
+	// 	}
+	// 	myfile << "]\n";
+	// 	break;
+	// }
+	// for(int k=0;k<K;k++)
+	// {
 	// 	myfile << "Z" << k << "=["<<setprecision(3);	
 	// 	for(int i=-dsize;i<ssize+dsize; i++)
 	// 	{
@@ -336,13 +374,52 @@ void initD()
 				d(t,k,i) = dm(k,i);
 }
 
-void initS(int t, vector<double> in) 
+void normalizeS(int t)
 {
+	double sum = 0;
+	double sum2 = 0;
 	for(int i = 0 ; i < ssize;i++)
 	{
-		s(t,i) = in[i];
-		os(t,i) = in[i];
+		sum+=s(t,i);
+		sum2 =(s(t,i)*s(t,i))+sum2;
+	} 
+	double mean = sum/ssize;
+	double std = sqrt(sum2/ssize-mean*mean);
+	int anynan = 0;
+	
+	if(std == std && std > 0.0001)
+	{
+		for(int i = 0 ; i < ssize;i++)
+		{
+			s(t,i) = (s(t,i)-mean)/std;
+			// s(t,i) = ((s(t,i)-mean));
+			// if(s(t,i)!=s(t,i)) anynan++;
+		}
 	}
+	// printf(">%d,%d,%f/%f/%f/%f/%d\n",t,ssize,std,sum,sum2,s(t,0),anynan);
+}
+
+void initS(int t, vector<double> in)
+{
+	vector<double> tmp(sigSize-bandFilterSize+1,0); 
+	for(int i = 0 ; i < tmp.size(); i++)
+	{
+		tmp[i]=0;
+		for(int j = 0 ; j < bandFilterSize; j++)
+		{
+			tmp[i] += in[i+j] * filter[j];
+		}
+	}
+	
+	for(int i = 0 ; i < ssize; i++)
+	{
+		s(t,i)= 0;
+		for(int j = 0 ; j < MAFilterSize; j++)
+		{
+			s(t,i) += in[i+j] * MAFilter;
+		}
+	}
+	normalizeS(t);
 }
 
 void initZ(int t) 
@@ -368,25 +445,6 @@ void initBeta(int t)
 	}
 }
 
-void normalizeS(int t)
-{
-	double sum = 0;
-	double sum2 = 0;
-	for(int i = 0 ; i < ssize;i++)
-	{
-		sum+=s(t,i);
-		sum2 =(s(t,i)*s(t,i))+sum2;
-	} 
-	double mean = sum/ssize;
-	double std = sqrt(sum2/ssize-mean*mean);
-	if(std ==0) return;
-	for(int i = 0 ; i < ssize;i++)
-	{
-		s(t,i) = ((s(t,i)-mean)/std);
-		// s(t,i) = ((s(t,i)-mean));
-	}
-}
-
 void normalizeDictionary(int t)
 {
 	for(int k = 0 ; k < K ; k++)
@@ -401,7 +459,7 @@ void normalizeDictionary(int t)
 	}
 }
 
-void syncDictionary(int t)
+int syncDictionary(int t)
 {
 	int isNan=0;
 	for(int k = 0 ; k < K ; k++)
@@ -425,7 +483,22 @@ void syncDictionary(int t)
 	}
 	else
 	{
-		printf("NAN\n");
+		printf("%d=NAN\n",t);
+		// for(int i = 0 ; i < ssize; i++)
+		// {
+		// 	printf("%f ",s(t,i));
+		// }
+
+		// for(int k = 0 ; k < K ; k++)
+		// {
+		// 	for(int i = -dsize; i <=dsize ; i++ )
+		// 	{
+		// 		if(d(t,k,i)!=d(t,k,i))
+		// 		{
+		// 			printf("****%d %d %f\n",k,i,d(t,k,i));
+		// 		}
+		// 	}
+		// }
 	}
 	
 	for(int k = 0 ; k < K ; k++)
@@ -435,8 +508,8 @@ void syncDictionary(int t)
 			d(t,k,i) = dm(k,i);
 		}
 	}
+	return isNan;
 }
-
 
 int inference(int t)
 {
@@ -444,7 +517,7 @@ int inference(int t)
 	int lastK=-1;
 	int lastI=-1;
 	double loss = calcLoss(t);
-
+	// printf("%d=LOSS=%f\n",t,loss);
 	int negativeCount = 100;
 	int positiveCount = 0;
 	vector<int> lastDiff(100,0);
@@ -618,10 +691,11 @@ int main(int argc, char** argv)
 {
 	LAMBDA = atof(argv[1]);
 	dsize = atoi(argv[2]);
-	T = atoi(argv[3]);
+	K = atoi(argv[3]);
+	T = atoi(argv[4]);
 
-	printf("lambda = %f\tdsize=%d\tT=%d\n",LAMBDA,dsize,T);
-
+	printf("lambda = %f\ndsize=%d\nK=%d\nT=%d\n",LAMBDA,dsize,K,T);
+	printf("===================================\n");
 	S = vector< vector<double> >(T,vector<double>(ssize+margin,0));
 	OS = vector< vector<double> >(T,vector<double>(ssize+margin,0));
 	D = vector< vector< vector<double> > >(T,vector< vector<double> >(K,vector<double>(dsize*2+1,0)));
@@ -635,11 +709,13 @@ int main(int argc, char** argv)
 
 	vector< vector<double> > ts  = timeSeries("/home/kanit/npz/d-8634");
 	vector<int> rd = shuffleArray(ts.size());
+	printf("===================================\n");
 	initD();
 
 	int count0 = 0;
 	int countPrint = 0;
 	int total = 0;
+	int totalCode = 0;
 	#pragma omp parallel for num_threads(T)
 	for(int i = 0 ; i < ts.size() ; i++)
 	{
@@ -647,35 +723,39 @@ int main(int argc, char** argv)
 		
 		initS(t,ts[rd[i]]);
 		initZ(t);
-		normalizeS(t);
 		initBeta(t);
 		double baseLoss = calcLoss(t);
 		int inferRound = inference(t);
 		double zLoss = calcLoss(t);
 		int dictRound = learnDictionary(t);
 		double dLoss = calcLoss(t);
-		#pragma omp critical
+		#pragma omp critical(CRIT_1)
 		{
-			syncDictionary(t);
+			totalCode += inferRound;
+			total++;
+			int isNaN = syncDictionary(t);
 			double sLoss = calcLoss(t);
-			printf("%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\n",total++,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss);
-
-			if(t==0)
+			
+			if(t==0 || isNaN==1)
 			{
 				count0++;
-				if(count0 == miniBatch)
+				if(count0 == miniBatch || isNaN==1)
 				{
 					char logname[100];
-					sprintf(logname,"res_%06d_%d",countPrint++,(int)(dLoss));
+					sprintf(logname,"res_%06d_%d_%d_%d",countPrint++,(int)(dLoss),K,T);
 					char foldname[100];
-					sprintf(foldname,"res_lb%f_ds%d",LAMBDA,dsize);
+					sprintf(foldname,"res_lb%f_ds%d_k%d_t%d",LAMBDA,dsize,K,T);
 					reportTesting(t,foldname, logname,inferRound);
-					printf("*\n");
+					printf("*%d\t%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\t->%.5f\n",t,total,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss,(double)totalCode/total);
 					count0=0;
+				}
+				else
+				{
+					printf(" %d\t%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\t->%.5f\n",t,total,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss,(double)totalCode/total);
 				}
 			}
 		}
 	}
-
+ 
 	return 0;
 }
