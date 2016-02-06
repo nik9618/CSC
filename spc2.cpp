@@ -25,7 +25,7 @@
 #define b(t,k,i) 	B[t][k][i+margin]
 
 #define importDict false
-#define maxData 1000000
+#define maxData 2000000
 #define sigSize 1250
 #define bandFilterSize 47 //@ 2 hz
 #define MAFilterSize 5 
@@ -716,6 +716,10 @@ int main(int argc, char** argv)
 	int countPrint = 0;
 	int total = 0;
 	int totalCode = 0;
+
+	double lossRound =0;
+	double zRound = 0;
+	int totalRound = 0;
 	#pragma omp parallel for num_threads(T)
 	for(int i = 0 ; i < ts.size() ; i++)
 	{
@@ -735,19 +739,29 @@ int main(int argc, char** argv)
 			total++;
 			int isNaN = syncDictionary(t);
 			double sLoss = calcLoss(t);
-			
-			if(t==0 || isNaN==1)
+
+			lossRound +=sLoss;
+			zRound +=inferRound;
+			totalRound++;
+			if(isNaN==1)
+			{
+				printf("NAN\n");
+			}
+			if(t==0 )
 			{
 				count0++;
-				if(count0 == miniBatch || isNaN==1)
+				if(count0 == miniBatch)
 				{
 					char logname[100];
 					sprintf(logname,"res_%06d_%d_%d_%d",countPrint++,(int)(dLoss),K,T);
 					char foldname[100];
 					sprintf(foldname,"res_lb%f_ds%d_k%d_t%d",LAMBDA,dsize,K,T);
 					reportTesting(t,foldname, logname,inferRound);
-					printf("*%d\t%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\t->%.5f\n",t,total,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss,(double)totalCode/total);
+					printf("*%d\t%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\t->%.5f\t->%.5f\n",t,total,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss,(double)zRound/totalRound,lossRound);
 					count0=0;
+					lossRound =0;
+					zRound =0;
+					totalRound=0;
 				}
 				else
 				{
