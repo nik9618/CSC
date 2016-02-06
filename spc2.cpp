@@ -757,7 +757,7 @@ int main(int argc, char** argv)
 					char foldname[100];
 					sprintf(foldname,"res_lb%f_ds%d_k%d_t%d",LAMBDA,dsize,K,T);
 					reportTesting(t,foldname, logname,inferRound);
-					printf("*%d\t%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\t->%.5f\t->%.5f\n",t,total,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss,(double)zRound/totalRound,lossRound);
+					printf("*%d\t%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\t->%.5f\t->%.5f\n",t,total,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss,(double)zRound/totalRound,lossRound/totalRound);
 					count0=0;
 					lossRound =0;
 					zRound =0;
@@ -768,6 +768,7 @@ int main(int argc, char** argv)
 					printf(" %d\t%d\tloss = %.5f \t-> %.5f(%8d) \t-> %.5f(%8d)\t-> %.5f\t->%.5f\n",t,total,baseLoss,zLoss,inferRound,dLoss,dictRound,sLoss,(double)totalCode/total);
 				}
 			}
+			fflush(0);
 		}
 	}
  
