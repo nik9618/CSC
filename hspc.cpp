@@ -19,8 +19,8 @@
 
 #define d(k,j,i) 	D[k][j][i+dsize]
 #define s(j,i)		S[j][i]
-#define z(j,i) 		Z[j][i+dsize]
-#define b(j,i) 		Z[j][i+dsize]
+#define z(j,k,i) 	Z[j][k][i+dsize]
+#define b(j,k,i) 	B[j][k][i+dsize]
 
 #define T 30
 
@@ -37,10 +37,10 @@ int dsize = 10;
 int ssize = 1214;
 int K = 30;
 
-vector< vector< vector<double> > >D;
-vector< vector<double> > Z;
-vector< vector<double> > B;
-vector< vector<double> > S;
+vector< vector< vector<double> > >D; //done
+vector< vector< vector<double> > >Z; //done
+vector< vector< vector<double> > >B; //done
+vector< vector<double> > S; //done
 vector< vector< vector<double> > > ND;
 vector< vector< vector<double> > > Zn;
 
@@ -276,28 +276,31 @@ void initS(int i)
 void initZ() 
 {
 	for(int k=0;k<K;k++)
-		for(int i = -dsize;i<inD[3]+dsize;i++)
-			z(k,i) = 0;
+		for(int ik=0;ik<in_k;ik++)
+			for(int i = -dsize;i<inD[3]+dsize;i++)
+				z(k,ik,i) = 0;
 }
 
 void initB()
 {
 	for(int k=0;k<K;k++)
 	{
-		for(int i = - dsize; i< ssize + dsize; i++)
+		for(int ik=0;ik<in_k;ik++)
 		{
-			b(k,i) = 0;
-			for(int j =-dsize ; j <= dsize ;j++)
+			for(int i = -dsize; i<ssize+dsize; i++)
 			{
-				if(i+j <0 || i+j >=ssize) continue;
-				for(int l=0; l<inD[2]; l++)
+				b(k,ik,i) = 0;
+				for(int j =-dsize ; j <= dsize ;j++)
 				{
-					b(k,i) += s(l,i+j) * d(k,l,-j);
+					if(i+j <0 || i+j >=ssize) continue;
+					b(k,ik,i) += s(ik,i+j) * d(k,ik,-j);
 				}
 			}
 		}
 	}
 }
+
+
 
 int main(void)
 {	
@@ -314,15 +317,14 @@ int main(void)
 	// testFilePrecision(in_D,in_L,in_S,in_codek,in_codei,in_codeval);
 
 	D = vector< vector< vector <double> > >(K, vector< vector <double> >(in_k, vector<double>(dsize*2 +1, 0 )));
-	Z = vector< vector<double> >(K, vector<double>(outD[3], 0));
-	B = vector< vector<double> >(K, vector<double>(outD[3], 0));
+	Z = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0)));
+	B = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0)));
 	S = vector< vector<double> >(inD[2], vector<double>(inD[3],0));
 
 	initD();
 	initZ();
 	initS(0);
 	initB();
-
 
 
 	return 0;
