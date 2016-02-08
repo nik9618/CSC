@@ -33,6 +33,7 @@ int in_k =0;
 int in_sLen = 0;
 
 int dsize = 10;
+int ssize = 1214;
 int K = 30;
 
 vector< vector< vector<double> > >D;
@@ -85,7 +86,6 @@ int parseBinary(int *dsize, int *k, int *sLen, vector< vector<double> > *D,vecto
 		*D = Dtmp;
 
 		// parse Signal
-
 		int chunkLength;
 		double loss;
 		short sigLen;
@@ -279,6 +279,25 @@ void initZ()
 			z(k,i) = 0;
 }
 
+void initBeta()
+{
+	for(int k=0;k<K;k++)
+	{
+		for(int i = - dsize; i< ssize + dsize; i++)
+		{
+			b(k,i) = 0;
+			for(int j =-dsize ; j <= dsize ;j++)
+			{
+				if(i+j <0 || i+j >=ssize) continue;
+				for(int l=0; l<inD[2]; l++)
+				{
+					b(k,i) += s(l,i+j) * d(k,l,-j);
+				}
+			}
+		}
+	}
+}
+
 int main(void)
 {	
 	int nSamples = parseBinary(&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&in_codek,&in_codei,&in_codeval);
@@ -301,7 +320,7 @@ int main(void)
 	initD();
 	initZ();
 	initS(0);
-
+	initB();
 
 
 
