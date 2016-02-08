@@ -20,6 +20,7 @@
 #define d(k,j,i) 	D[k][j][i+dsize]
 #define s(j,i)		S[j][i]
 #define z(j,i) 		Z[j][i+dsize]
+#define b(j,i) 		Z[j][i+dsize]
 
 #define T 30
 
@@ -279,7 +280,7 @@ void initZ()
 			z(k,i) = 0;
 }
 
-void initBeta()
+void initB()
 {
 	for(int k=0;k<K;k++)
 	{
