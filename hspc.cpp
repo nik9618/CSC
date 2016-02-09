@@ -280,7 +280,10 @@ void initD()
 		for(int j=0; j<inD[2]; j++)
 			for(int i=-dsize; i<=dsize; i++)
 				d(k,j,i) = rand()%1000;
-	
+	normalizeDictionary();
+}
+void normalizeDictionary()
+{
 	for(int k=0; k < K;k++)
 	{
 		double sum = 0;
@@ -528,15 +531,15 @@ int learnDictionary()
 				}
 			}
 		}
-		// normalizeDictionary(t);
+		normalizeDictionary();
 		round++;
 
 		double loss= calcLoss();
 		printf("DLoss = %f %f = %f\n",lastLoss,loss,loss-lastLoss);
 		lastLoss=loss;
+
 		// if(fabs(loss-lastLoss) < limitDiffLossDict) break;
 		
-
 		// if(round > dictRound)
 		// {
 		// 	double loss = calcLoss(t);
