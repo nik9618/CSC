@@ -305,6 +305,23 @@ void normalizeDictionary(int t)
 	}
 }
 
+void syncDictionary(int t)
+{
+	for(int k = 0 ; k < K ; k++)
+		for(int ik = 0 ; ik < in_k ; ik++)
+			for(int i = -dsize; i <=dsize ; i++ )
+				dm(k,ik,i) = 0.9*dm(k,ik,i) + 0.1*d(t,k,ik,i);
+	
+	for(int k = 0 ; k < K ; k++)
+		for(int ik = 0 ; ik < in_k ; ik++)
+			for(int i = -dsize; i <=dsize ; i++ )
+				d(t,k,ik,i)=dm(k,ik,i);
+
+
+	normalizeDictionary(t);
+}
+
+
 void initD()
 {		
 	for(int k=0; k < K;k++)
@@ -596,7 +613,7 @@ int learnDictionary(int t)
 				}
 			}
 		}
-		normalizeDictionary(t);
+		syncDictionary(t);
 		
 		double loss= calcLoss(t);
 		// if(loss-lastLoss>0)
