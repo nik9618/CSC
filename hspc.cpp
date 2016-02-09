@@ -40,17 +40,17 @@ using namespace std;
 #define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
 #define T 30
-#define LAMBDA 0.005
-#define inferenceMinRound 100
-#define inferencePercentBreak 0.2
-#define inferenceMaxRound 500
+#define LAMBDA 0.0005
+#define inferenceMinRound 200
+#define inferencePercentBreak 0.3
+#define inferenceMaxRound 1000
 // #define inferenceDiffLossBreak 0.01
 
 #define dictMinRound 20
 #define dictMaxRound 75
-#define dictDiffLossBreak 0.1
+#define dictDiffLossBreak 0.2
 #define dictPercentBreak 0.1
-#define dictstepsize 0.000000001
+#define dictstepsize 0.000000003
 
 int * inD;
 int * outD;
@@ -667,12 +667,12 @@ void reportTesting(int t,double loss,double zround, double dround, int fileID)
 {
 	ofstream myfile;
 	
-	std::stringstream ss;
-	ss <<"mkdir -p /home/kanit/anomalydeep/result_lay2";
-	std::string genfolder = ss.str();
-	int x = system(genfolder.c_str());
+	// std::stringstream ss;
+	// ss <<"mkdir -p /home/kanit/anomalydeep/result_lay2";
+	// std::string genfolder = ss.str();
+	// int x = system(genfolder.c_str());
 
-	myfile.open ("/home/kanit/anomalydeep/result_lay2/" + to_string(fileID) +".txt");
+	myfile.open ("/home/kanit/Dropbox/arrhythmia_project_shared/result_lay2/" + to_string(fileID) +".txt");
 	
 	myfile << "Loss="<<loss<<"\n";
 	myfile << "Zround="<<zround<<"\n";
@@ -717,9 +717,9 @@ void reportTesting(int t,double loss,double zround, double dround, int fileID)
 	}
 	myfile << "]\n\n";
 	
-	myfile << "D" << "=["<<setprecision(6) ;
 	for(int i = 0 ; i < K ; i++)
 	{
+		myfile << "D" <<i<< "=["<<setprecision(6) ;
 		for(int ik = 0 ; ik < in_k ; ik++)
 		{
 			for (int j = -dsize; j<=dsize ;j++)
@@ -728,8 +728,9 @@ void reportTesting(int t,double loss,double zround, double dround, int fileID)
 			}
 			myfile << ";";
 		}
+		myfile << "]\n";
 	}
-	myfile << "]\n";
+	
 	myfile.close();
 }
 
