@@ -31,6 +31,9 @@
 #define inferenceMaxRound 1000
 #define inferenceDiffLossBreak 30
 
+#define dictMinRound 100
+#define dictMaxRound 100
+
 #define dictstepsize 0.00000001
 
 using namespace std;
@@ -532,32 +535,18 @@ int learnDictionary()
 			}
 		}
 		normalizeDictionary();
-		round++;
-
+		
 		double loss= calcLoss();
-		printf("DLoss = %f %f = %f\n",lastLoss,loss,loss-lastLoss);
-		lastLoss=loss;
+		printf("%d DLoss = %f %f = %f\n",round,lastLoss,loss,loss-lastLoss);
 
-		// if(fabs(loss-lastLoss) < limitDiffLossDict) break;
+		if(round > dictMinRound)
+		{
+			if(fabs(loss-lastLoss) < limitDiffLossDict) break;
+			if(round > dictMaxRound) break;
+		}
 		
-		// if(round > dictRound)
-		// {
-		// 	double loss = calcLoss(t);
-		// 	if(loss > 15)
-		// 	{
-		// 		special++;
-		// 		dstepsize = dictstepsize/5.;
-		// 		if(special == 120)
-		// 		{
-		// 			break;
-		// 		}
-		// 	}
-		// 	else
-		// 	{
-		// 		break;
-		// 	}
-		// }
-		
+		lastLoss=loss;
+		round++;
 	}
 	return round;
 }
