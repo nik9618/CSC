@@ -237,6 +237,28 @@ void testFilePrecision(vector< vector<double> > in_D,vector<double> in_L, vector
 	printf("AvgLoss Lossy File Encode-Decode : %.10f\n",total/in_S.size());
 }
 
+double calcLoss()
+{
+	double loss=0;
+	for(int k=0 ; k<K ;k++)
+	{
+		for(int i=0 ; i<ssize ;i++)
+		{
+			double x = s(ik,i);
+			for(int ik = 0 ; ik<in_k; ik++)
+			{
+				for(int j =-dsize; j<= dsize ;j++)
+				{
+					x-= d(k,ik,j) * z(k,ik,i+j);
+				}
+			}
+			loss+= x*x;
+		}
+	}
+	return loss;
+}
+
+
 void initD()
 {
 	for(int k=0; k < K;k++)
@@ -300,7 +322,120 @@ void initB()
 	}
 }
 
+int inference()
+{
+	int round = 0;
+	double loss = calcLoss();
+	printf("LOSS=%f\n",loss);
+	int negativeCount = 100;
+	int positiveCount = 0;
+	vector<int> lastDiff(100,0);
 
+	while(true)
+	{
+		// calculate new Z
+		for(int k=0;k<K;k++)
+		{
+			for(int ik=0; ik<in_k;ik++)
+			{
+				for(int i=-dsize ; i<ssize+dsize; i++)
+				{
+					double sqdivider = 0;
+					for(int j = -dsize; j<=dsize; j++)
+					{
+						if(i+j < 0 || i+j >= ssize) continue;
+						sqdivider += (d(t,k,-j) * d(t,k,-j));
+					}
+					zn(k,ik,i) = shrink(b(k,ik,i),LAMBDA) / sqdivider;
+				}
+			}
+		}
+
+		//maximum diff Z
+		double maxV=-1;
+		int maxK;
+		int maxIK;
+		int maxI;
+
+		for(int k =0 ; k < K ; k++)
+		{
+			for(int ik=0 ; ik<in_k ; ik++)
+			{
+				for(int i=-dsize ; i < ssize + dsize; i++)
+				{
+					double fs = fabs( zn(k,ik,i) - z(k,ik,i) );
+					if(fs > maxV )
+					{
+						maxV=fs;
+						maxK=k;
+						maxIK=ik;
+						maxI=i;
+					}
+				}
+			}
+		}
+
+		// update beta
+		double savedBeta = b(t,maxK,maxI);
+		for(int i=-2*dsize; i<= 2*dsize; i++)
+		{
+			int editing = i+maxI;
+			if(editing < -dsize || editing >= ssize + dsize) continue;
+			for(int k=0; k<K ;k++)
+			{
+				double total = 0;
+				for(int r = -dsize + editing; r<=dsize + editing; r++)
+				{
+					if(r < 0 || r >= ssize) continue;
+					for(int c = -dsize ; c<= dsize ;c++)
+					{
+						int zind = r+c;
+						if( zind == maxI )
+						{
+							total += d(t,maxK,c) * d(t,k,-(r-editing));
+						}
+					}
+				}
+				b(t,k,editing) -= (zn(t,maxK,maxI)-z(t,maxK,maxI)) * total;
+			}
+		}
+
+		z(t,maxK,maxI) = zn(t,maxK,maxI);
+		b(t,maxK,maxI) = savedBeta;
+		double newLoss = calcLoss(t);
+		double diffLoss = newLoss-loss;
+		
+
+		// STOP CONDITIONS
+		if(diffLoss>0)
+		{
+			if(lastDiff[round%100] == 1) positiveCount--;
+			else negativeCount--; 
+			lastDiff[round%100] = 1;
+			positiveCount++;
+		}
+		else
+		{
+			if(lastDiff[round%100] == 1) positiveCount--;
+			else negativeCount--; 
+
+			lastDiff[round%100] = -1;
+			negativeCount++;
+		}
+		double percentBreak = (double)(positiveCount) / (positiveCount+negativeCount);
+		if(round > inferenceMinRound )
+		{
+			// if(fabs(loss-newLoss) < diffLossSPC) break;
+			if(percentBreak > 0.4) break;
+			if(round  > maxCoordinateDescentLoop ) break;
+			if(newLoss==0) break;
+		}
+		loss = newLoss;
+		round++;
+	}
+	// cout <<"]\n";
+	return round;
+}
 
 int main(void)
 {	
@@ -325,6 +460,7 @@ int main(void)
 	initZ();
 	initS(0);
 	initB();
+
 
 
 	return 0;
