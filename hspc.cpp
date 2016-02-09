@@ -1,8 +1,10 @@
 /*
 todo :
-1. optimize z coding.
 2. multithreads.
+3. print result.
 
+done : 
+1. optimize z coding.
 
 in doubt ? 
 1. normalize input ? 
@@ -28,23 +30,24 @@ in doubt ?
 
 using namespace std;
 
-#define d(j,k,i) 	D[j][k][i+dsize]
-#define div(j,k,i) 	D[j][k][i+dsize]
-#define s(j,i)		S[j][i]
-#define z(j,k,i) 	Z[j][k][i+dsize]
-#define zn(j,k,i) 	ZN[j][k][i+dsize]
-#define b(j,k,i) 	B[j][k][i+dsize]
-#define nd(j,k,i) 	ND[j][k][i+dsize]
+#define dm(j,k,i) 	DM[j][k][i+dsize]
+#define d(t,j,k,i) 	D[t][j][k][i+dsize]
+#define div(t,j,k,i) 	D[t][j][k][i+dsize]
+#define s(t,j,i)		S[t][j][i]
+#define z(t,j,k,i) 	Z[t][j][k][i+dsize]
+#define zn(t,j,k,i) 	ZN[t][j][k][i+dsize]
+#define b(t,j,k,i) 	B[t][j][k][i+dsize]
+#define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
 #define T 30
 #define LAMBDA 0.005
 #define inferenceMinRound 100
 #define inferencePercentBreak 0.2
-#define inferenceMaxRound 1000
+#define inferenceMaxRound 500
 // #define inferenceDiffLossBreak 0.01
 
-#define dictMinRound 250
-#define dictMaxRound 500
+#define dictMinRound 20
+#define dictMaxRound 75
 #define dictDiffLossBreak 0.1
 #define dictPercentBreak 0.1
 #define dictstepsize 0.000000001
@@ -60,13 +63,14 @@ int dsize = 7;
 int ssize = 1214;
 int K = 40;
 
-vector< vector< vector<double> > >D; //done
-vector< vector< vector<double> > >Z; //done
-vector< vector< vector<double> > >ZN; //done
-vector< vector< vector<double> > >B; //done
-vector< vector<double> > S; //done
-vector< vector< vector<double> > > Zn;
-vector< vector< vector<double> > > ND;
+vector< vector< vector<double> > >DM;
+vector< vector< vector< vector<double> > > >D;
+vector< vector< vector< vector<double> > > >Z;
+vector< vector< vector< vector<double> > > >ZN;
+vector< vector< vector< vector<double> > > >B;
+vector< vector< vector<double> > >S;
+vector< vector< vector< vector<double> > > >Zn;
+vector< vector< vector< vector<double> > > >ND;
 
 vector< vector<double> > in_D;
 vector<double> in_L;
@@ -76,7 +80,6 @@ vector< vector<short> > in_codei;
 vector< vector<double> > in_codeval;
 
 vector<int> rd;
-
 
 int parseBinary(int *dsize, int *k, int *sLen, vector< vector<double> > *D,vector<double> *l, vector< vector<double> > *s, vector< vector<short> > *ck, vector< vector<short> > *ci, vector< vector<double> > *cv)
 {
@@ -267,19 +270,19 @@ double shrink(double beta, double lamb)
 	return 0;
 }
 
-double calcLoss()
+double calcLoss(int t)
 {
 	double loss=0;
 	for(int ik = 0 ; ik<in_k; ik++)
 	{	
 		for(int i=0 ; i<ssize ;i++)
 		{
-			double x = s(ik,i);
+			double x = s(t,ik,i);
 			for(int k=0 ; k<K ;k++)
 			{
 				for(int j =-dsize; j<= dsize ;j++)
 				{
-					x-= d(k,ik,j) * z(k,ik,i+j);
+					x-= d(t,k,ik,j) * z(t,k,ik,i+j);
 				}
 			}
 			loss+= x*x;
@@ -288,30 +291,60 @@ double calcLoss()
 	return loss;
 }
 
-void normalizeDictionary()
+void normalizeDictionary(int t)
 {
 	for(int k=0; k < K;k++)
 	{
 		double sum = 0;
 		for(int j=0; j<inD[2]; j++)
 			for(int i=-dsize; i<=dsize; i++)
-				sum+=d(k,j,i);
+				sum+=d(t,k,j,i);
 		for(int j=0; j<inD[2]; j++)
 			for(int i=-dsize; i<=dsize; i++)
-				d(k,j,i) /= sum;
+				d(t,k,j,i) /= sum;
 	}
 }
 
 void initD()
-{
+{		
 	for(int k=0; k < K;k++)
+	{
+		for(int j=0; j<inD[2]; j++)
+		{
+			for(int i=-dsize; i<=dsize; i++)
+			{
+				dm(k,j,i) = rand()%1000;
+			}
+		}
+	}
+
+	for(int k=0; k < K;k++)
+	{
+		double sum = 0;
 		for(int j=0; j<inD[2]; j++)
 			for(int i=-dsize; i<=dsize; i++)
-				d(k,j,i) = rand()%1000;
-	normalizeDictionary();
+				sum+=dm(k,j,i);
+		for(int j=0; j<inD[2]; j++)
+			for(int i=-dsize; i<=dsize; i++)
+				dm(k,j,i) /= sum;
+	}
+
+	for(int k=0; k < K;k++)
+	{
+		for(int j=0; j<inD[2]; j++)
+		{
+			for(int i=-dsize; i<=dsize; i++)
+			{
+				for(int t=0; t<T; t++)
+				{
+					d(t,k,j,i) = dm(k,j,i);	
+				}
+			}
+		}
+	}
 }
 
-void initS(int i)
+void initS(int t, int i)
 {
 	vector<short> ck = in_codek[i];
 	vector<short> ci = in_codei[i];
@@ -319,31 +352,31 @@ void initS(int i)
 
 	for(int i=0 ; i<inD[2]; i++)
 	{
-		fill(S[i].begin(), S[i].end(), 0);
+		fill(S[t][i].begin(), S[t][i].end(), 0);
 	}
 
 	for(int i = 0 ; i < ck.size(); i++)
 	{
 		if(ci[i] >=in_sLen+in_dsize || ci[i] < -in_dsize)
 			printf("Input Out of Range\n");
-		s(ck[i],ci[i]+in_dsize) = cv[i];
+		s(t,ck[i],ci[i]+in_dsize) = cv[i];
 	}
 }
 
 void normalizeS()
 {
-
+	//???
 }
 
-void initZ() 
+void initZ(int t) 
 {
 	for(int k=0;k<K;k++)
 		for(int ik=0;ik<in_k;ik++)
 			for(int i=-dsize; i<inD[3]+dsize; i++)
-				z(k,ik,i) = 0;
+				z(t,k,ik,i) = 0;
 }
 
-void initB()
+void initB(int t)
 {
 	for(int k=0;k<K;k++)
 	{
@@ -351,24 +384,23 @@ void initB()
 		{
 			for(int i = -dsize; i<ssize+dsize; i++)
 			{
-				b(k,ik,i) = 0;
+				b(t,k,ik,i) = 0;
 				for(int j =-dsize ; j <= dsize ;j++)
 				{
 					if(i+j <0 || i+j >=ssize) continue;
-					b(k,ik,i) += s(ik,i+j) * d(k,ik,-j);
+					b(t,k,ik,i) += s(t,ik,i+j) * d(t,k,ik,-j);
 				}
 			}
 		}
 	}
 }
 
-int inference()
+int inference(int t)
 {
 	int round = 0;
 	int lastK=-1;
 	int lastI=-1;
-	double loss = calcLoss();
-	printf("SLOSS=%f\n",loss);
+	double loss = calcLoss(t);
 	int negativeCount = 100;
 	int positiveCount = 0;
 	vector<int> lastDiff(100,0);
@@ -386,7 +418,7 @@ int inference()
 				for(int j = -dsize; j<=dsize; j++)
 				{
 					if(i+j < 0 || i+j >= ssize) continue;
-					sqdivider += (d(k,ik,-j) * d(k,ik,-j));
+					sqdivider += (d(t,k,ik,-j) * d(t,k,ik,-j));
 				}
 				DIV[k][ik][i+dsize] = sqdivider;
 			}
@@ -407,8 +439,8 @@ int inference()
 			{
 				for(int i= -dsize ; i< ssize + dsize; i++)
 				{
-					zn(k,ik,i) = shrink(b(k,ik,i),LAMBDA) / DIV[k][ik][i+dsize];
-					double fs = fabs(zn(k,ik,i) - z(k,ik,i) );
+					zn(t,k,ik,i) = shrink(b(t,k,ik,i),LAMBDA) / DIV[k][ik][i+dsize];
+					double fs = fabs(zn(t,k,ik,i) - z(t,k,ik,i) );
 					if(fs > maxV )
 					{
 						if(lastK==k && lastI==i) printf("pick same \n");
@@ -422,8 +454,7 @@ int inference()
 		}
 
 		// update beta
-		// *** optimize to O(n^3) than O(n^4)
-		double savedBeta = b(maxK,maxIK,maxI);
+		double savedBeta = b(t,maxK,maxIK,maxI);
 		for(int i=-2*dsize; i<= 2*dsize; i++)
 		{
 			int editing = i+maxI;
@@ -439,24 +470,24 @@ int inference()
 						int zind = r+c;
 						if( zind == maxI )
 						{
-							total += d(maxK,maxIK,c) * d(k,maxIK,-(r-editing));
+							total += d(t,maxK,maxIK,c) * d(t,k,maxIK,-(r-editing));
 						}
 					}
 				}
-				b(k,maxIK,editing) -= (zn(maxK,maxIK,maxI)-z(maxK,maxIK,maxI)) * total;
+				b(t,k,maxIK,editing) -= (zn(t,maxK,maxIK,maxI)-z(t,maxK,maxIK,maxI)) * total;
 			}
 		}
 
-		z(maxK,maxIK,maxI) = zn(maxK,maxIK,maxI);
-		b(maxK,maxIK,maxI) = savedBeta;
-		double newLoss = calcLoss();
+		z(t,maxK,maxIK,maxI) = zn(t,maxK,maxIK,maxI);
+		b(t,maxK,maxIK,maxI) = savedBeta;
+		double newLoss = calcLoss(t);
 		
 		// stop conditions
 		double diffLoss = newLoss-loss;
-		if(diffLoss>0)
-			printf("%d\tZLOSS=%.7f\tDiff=%.7f ****************\n",round,newLoss,diffLoss);	
-		else
-			printf("%d\tZLOSS=%.7f\tDiff=%.7f\n",round,newLoss,diffLoss);
+		// if(diffLoss>0)
+		// 	printf("%d\tZLOSS=%.7f\tDiff=%.7f ****************\n",round,newLoss,diffLoss);	
+		// else
+		// 	printf("%d\tZLOSS=%.7f\tDiff=%.7f\n",round,newLoss,diffLoss);
 		
 		if( diffLoss > 0)
 		{
@@ -479,12 +510,12 @@ int inference()
 		{
 			if(percentBreak > inferencePercentBreak )
 			{
-				printf("Percent Break\n");
+				// printf("Percent Break\n");
 				break;
 			}
 			if(round  > inferenceMaxRound )
 			{
-				printf("MaxRound Break\n");
+				// printf("MaxRound Break\n");
 				break;
 			}
 			if(newLoss==0) break;
@@ -496,7 +527,7 @@ int inference()
 	return round;
 }
 
-vector< vector<double> > reconstruct()
+vector< vector<double> > reconstruct(int t)
 {
 	vector< vector<double> > res(in_k, vector<double>(ssize,0));
 	for(int ik=0; ik<in_k; ik++)
@@ -508,7 +539,7 @@ vector< vector<double> > reconstruct()
 			{
 				for(int d=-dsize; d<=dsize; d++)
 				{
-					total += z(k,ik,i+d) * d(k,ik,d);
+					total += z(t,k,ik,i+d) * d(t,k,ik,d);
 				}
 			}
 			res[ik][i] = total;
@@ -517,26 +548,26 @@ vector< vector<double> > reconstruct()
 	return res;
 }
 
-int learnDictionary()
+int learnDictionary(int t)
 {
 	int round = 0 ;
 	int special = 0;
 	double dstepsize = dictstepsize;
-	double lastLoss= calcLoss();
+	double lastLoss= calcLoss(t);
 	int negativeCount = 100;
 	int positiveCount = 0;
 	vector<int> lastDiff(100,0);
 
 	while(true)
 	{
-		vector< vector<double> > recon = reconstruct();
+		vector< vector<double> > recon = reconstruct(t);
 		vector< vector<double> > precalc(in_k,vector<double>(ssize,0));
 
 		for(int ik=0;ik<in_k;ik++)
 		{
 			for(int i=0;i<ssize;i++)
 			{
-				precalc[ik][i] = s(ik,i) - recon[ik][i];
+				precalc[ik][i] = s(t,ik,i) - recon[ik][i];
 			}
 		}
 		
@@ -546,10 +577,10 @@ int learnDictionary()
 			{
 				for(int d=-dsize;d<=dsize; d++)
 				{
-					nd(k,ik,d) = 0;
+					nd(t,k,ik,d) = 0;
 					for(int i = 0 ; i < ssize;i++)
 					{
-						nd(k,ik,d) += precalc[ik][i] * -z(k,ik,i+d);
+						nd(t,k,ik,d) += precalc[ik][i] * -z(t,k,ik,i+d);
 					}
 				}
 			}
@@ -561,17 +592,17 @@ int learnDictionary()
 			{
 				for(int d=-dsize;d<=dsize; d++)
 				{
-					d(k,ik,d) -=  dstepsize * nd(k,ik,d);
+					d(t,k,ik,d) -=  dstepsize * nd(t,k,ik,d);
 				}
 			}
 		}
-		normalizeDictionary();
+		normalizeDictionary(t);
 		
-		double loss= calcLoss();
-		if(loss-lastLoss>0)
-			printf("%d\tDLoss = %f %f = %f *******************\n",round,lastLoss,loss,loss-lastLoss);
-		else
-			printf("%d\tDLoss = %f %f = %f\n",round,lastLoss,loss,loss-lastLoss);
+		double loss= calcLoss(t);
+		// if(loss-lastLoss>0)
+		// 	printf("%d\tDLoss = %f %f = %f *******************\n",round,lastLoss,loss,loss-lastLoss);
+		// else
+		// 	printf("%d\tDLoss = %f %f = %f\n",round,lastLoss,loss,loss-lastLoss);
 
 		if(loss-lastLoss > 0)
 		{
@@ -594,17 +625,17 @@ int learnDictionary()
 		{
 			if(fabs(loss-lastLoss) < dictDiffLossBreak)
 			{
-				printf("DiffLoss Break\n");
+				// printf("DiffLoss Break\n");
 				break;
 			}
 			if(round > dictMaxRound)
 			{
-				printf("MaxRound Break\n");
+				// printf("MaxRound Break\n");
 				break;
 			}
 			if(percentBreak > dictPercentBreak)
 			{
-				printf("Percent Break\n");
+				// printf("Percent Break\n");
 				break;
 			}
 		}
@@ -614,7 +645,6 @@ int learnDictionary()
 	}
 	return round;
 }
-
 
 int main(void)
 {	
@@ -631,23 +661,37 @@ int main(void)
 	printf("ssize : %d\n",ssize);
 	printf("dsize : %d\n",dsize);
 	printf("K : %d\n",K);
+	printf("T : %d\n",T);
 	// testFilePrecision(in_D,in_L,in_S,in_codek,in_codei,in_codeval);
-
-	D  = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
-	Z  = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0)));
-	ZN = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0)));
-	B  = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0)));
-	S = vector< vector<double> >(inD[2], vector<double>(inD[3],0));
-	ND  = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
+	DM = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
+	D  = vector< vector< vector< vector<double> > > >(T,vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 ))));
+	Z  = vector< vector< vector< vector<double> > > >(T,vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0))));
+	ZN = vector< vector< vector< vector<double> > > >(T,vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0))));
+	B  = vector< vector< vector< vector<double> > > >(T,vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0))));
+	S  = vector< vector< vector<double> > >(T, vector< vector<double> >(inD[2], vector<double>(inD[3],0)));
+	ND  = vector< vector< vector< vector<double> > > >(T, vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 ))));
 
 	initD();
-	
-	for(int i  =0 ; i < 3000; i++){
-		initZ();
-		initS(i);
-		initB();
-		inference();
-		learnDictionary();
+	int round = 0;
+
+	#pragma omp parallel for num_threads(T)
+	for(int i  =0 ; i < nSamples; i++){
+		
+		int t = omp_get_thread_num();
+
+		initZ(t);
+		initS(t,i);
+		initB(t);
+		double l1 = calcLoss(t);
+		int r1 = inference(t);
+		double l2 = calcLoss(t);
+		int r2 = learnDictionary(t);
+		double l3 = calcLoss(t);
+		#pragma omp critical
+		{
+			round++;
+			printf("%d\t> %f\t%d\t> %f\t%d\t> %f\n",round,l1,r1,l2,r2,l3);
+		}
 	}
 	
 	return 0;

@@ -35,7 +35,7 @@
 // lambda dictsize num_dict
 double LAMBDA = 0.05;
 int dsize = 4;
-int T = 4;
+int T = 30;
 int K = 40;
 
 int ssize = sigSize - bandFilterSize - MAFilterSize + 2;
