@@ -22,12 +22,16 @@
 #define z(j,k,i) 	Z[j][k][i+dsize]
 #define zn(j,k,i) 	ZN[j][k][i+dsize]
 #define b(j,k,i) 	B[j][k][i+dsize]
+#define nd(j,k,i) 	ND[j][k][i+dsize]
 
 #define T 30
 #define LAMBDA 0
 #define inferenceMinRound 100
 #define inferencePercentBreak 0.4 
 #define inferenceMaxRound 1000
+#define inferenceDiffLossBreak 30
+
+#define dictstepsize 0.00000001
 
 using namespace std;
 
@@ -48,6 +52,7 @@ vector< vector< vector<double> > >ZN; //done
 vector< vector< vector<double> > >B; //done
 vector< vector<double> > S; //done
 vector< vector< vector<double> > > Zn;
+vector< vector< vector<double> > > ND;
 
 vector< vector<double> > in_D;
 vector<double> in_L;
@@ -334,124 +339,6 @@ void initB()
 	}
 }
 
-// int inference()
-// {
-// 	int round = 0;
-// 	int lastK=-1;
-// 	int lastI=-1;
-// 	double loss = calcLoss();
-// 	printf("SLOSS=%f\n",loss);
-// 	int negativeCount = 100;
-// 	int positiveCount = 0;
-// 	vector<int> lastDiff(100,0);
-
-// 	while(true)
-// 	{
-// 		// calculate new Z
-// 		for(int k=0;k<K;k++)
-// 		{
-// 			for(int ik=0; ik<in_k;ik++)
-// 			{
-// 				for(int i=-dsize ; i<ssize+dsize; i++)
-// 				{
-// 					double sqdivider = 0;
-// 					for(int j = -dsize; j<=dsize; j++)
-// 					{
-// 						if(i+j < 0 || i+j >= ssize) continue;
-// 						sqdivider += (d(k,ik,-j) * d(k,ik,-j));
-// 					}
-// 					zn(k,ik,i) = shrink(b(k,ik,i),LAMBDA) / sqdivider;
-// 				}
-// 			}
-// 		}
-
-// 		//maximum diff Z
-// 		double maxV=-1;
-// 		int maxK;
-// 		int maxIK;
-// 		int maxI;
-
-// 		for(int k =0 ; k < K ; k++)
-// 		{
-// 			for(int ik=0 ; ik<in_k ; ik++)
-// 			{
-// 				for(int i=-dsize ; i < ssize + dsize; i++)
-// 				{
-// 					double fs = fabs( zn(k,ik,i) - z(k,ik,i) );
-// 					if(fs > maxV )
-// 					{
-// 						maxV=fs;
-// 						maxK=k;
-// 						maxIK=ik;
-// 						maxI=i;
-// 					}
-// 				}
-// 			}
-// 		}
-// 		printf("k=%d\tik=%d\ti=%d\tval=%f\n",maxK,maxIK,maxI,maxV);
-
-// 		// update beta
-// 		double savedBeta = b(maxK,maxIK,maxI);
-// 		for(int i=-2*dsize; i<= 2*dsize; i++)
-// 		{
-// 			int editing = i+maxI;
-// 			if(editing < -dsize || editing >= ssize + dsize) continue;
-// 			for(int ik=0; ik<in_k; ik++)
-// 			{
-// 				double total = 0;
-// 				for(int r = -dsize + editing; r<=dsize + editing; r++)
-// 				{
-// 					if(r < 0 || r >= ssize) continue;
-// 					for(int c = -dsize ; c<= dsize ;c++)
-// 					{
-// 						int zind = r+c;
-// 						if( zind == maxI )
-// 						{
-// 							total += d(maxK,maxIK,c) * d(maxK,ik,-(r-editing));
-// 						}
-// 					}
-// 				}
-// 				b(maxK,ik,editing) -= (zn(maxK,maxIK,maxI)-z(maxK,maxIK,maxI)) * total;
-// 			}
-// 		}
-
-// 		z(maxK,maxIK,maxI) = zn(maxK,maxIK,maxI);
-// 		b(maxK,maxIK,maxI) = savedBeta;
-// 		double newLoss = calcLoss();
-// 		printf("LOSS=%f\n",newLoss);
-// 		// double diffLoss = newLoss-loss;
-		
-// 		// STOP CONDITIONS
-// 		// if(diffLoss>0)
-// 		// {
-// 		// 	if(lastDiff[round%100] == 1) positiveCount--;
-// 		// 	else negativeCount--; 
-// 		// 	lastDiff[round%100] = 1;
-// 		// 	positiveCount++;
-// 		// }
-// 		// else
-// 		// {
-// 		// 	if(lastDiff[round%100] == 1) positiveCount--;
-// 		// 	else negativeCount--; 
-
-// 		// 	lastDiff[round%100] = -1;
-// 		// 	negativeCount++;
-// 		// }
-// 		// double percentBreak = (double)(positiveCount) / (positiveCount+negativeCount);
-// 		// if(round > inferenceMinRound )
-// 		// {
-// 		// 	// if(fabs(loss-newLoss) < diffLossSPC) break;
-// 		// 	if(inferencePercentBreak > 0.4) break;
-// 		// 	if(round  > inferenceMaxRound) break;
-// 		// 	if(newLoss==0) break;
-// 		// }
-// 		// loss = newLoss;
-// 		round++;
-// 	}
-// 	// cout <<"]\n";
-// 	return round;
-// }
-
 
 int inference()
 {
@@ -468,6 +355,7 @@ int inference()
 	{
 		// calculate new Z
 		// **** optimizable...
+		// keep divider and find max on the fly...
 		for(int k=0;k<K;k++)
 		{
 			for(int ik=0;ik<in_k;ik++)
@@ -509,9 +397,9 @@ int inference()
 				}
 			}
 		}
-		// printf("k=%d\tik=%d\ti=%d\tval=%f\n",maxK,maxIK,maxI,maxV);
 
 		// update beta
+		// *** optimize to O(n^3) than O(n^4)
 		double savedBeta = b(maxK,maxIK,maxI);
 		for(int i=-2*dsize; i<= 2*dsize; i++)
 		{
@@ -540,38 +428,137 @@ int inference()
 		b(maxK,maxIK,maxI) = savedBeta;
 		double newLoss = calcLoss();
 		
+		// stop conditions
 		double diffLoss = newLoss-loss;
-		printf("LOSS=%.7f\tDiff=%.7f\n",newLoss,diffLoss);
-		loss = newLoss;
-		// if(diffLoss>0)
-		// {
-		// 	if(lastDiff[round%100] == 1) positiveCount--;
-		// 	else negativeCount--; 
-		// 	lastDiff[round%100] = 1;
-		// 	positiveCount++;
-		// }
-		// else
-		// {
-		// 	if(lastDiff[round%100] == 1) positiveCount--;
-		// 	else negativeCount--; 
+		printf("%d\tLOSS=%.7f\tDiff=%.7f\n",round,newLoss,diffLoss);
+		
+		if(fabs(loss-newLoss) < inferenceDiffLossBreak)
+		{
+			if(lastDiff[round%100] == 1) positiveCount--;
+			else negativeCount--; 
+			lastDiff[round%100] = 1;
+			positiveCount++;
+		}
+		else
+		{
+			if(lastDiff[round%100] == 1) positiveCount--;
+			else negativeCount--; 
 
-		// 	lastDiff[round%100] = -1;
-		// 	negativeCount++;
-		// }
-		// double percentBreak = (double)(positiveCount) / (positiveCount+negativeCount);
-		// if(round > inferenceMinRound )
-		// {
-		// 	// if(fabs(loss-newLoss) < diffLossSPC) break;
-		// 	if(percentBreak > 0.4) break;
-		// 	if(round  > maxCoordinateDescentLoop ) break;
-		// 	if(newLoss==0) break;
-		// }
-		// loss = newLoss;
+			lastDiff[round%100] = -1;
+			negativeCount++;
+		}
+
+		double percentBreak = (double)(positiveCount) / (positiveCount+negativeCount);
+		if(round > inferenceMinRound )
+		{
+			if(percentBreak > inferencePercentBreak ) break;
+			if(round  > inferenceMaxRound ) break;
+			if(newLoss==0) break;
+		}
+		loss = newLoss;
 		round++;
 	}
 	// cout <<"]\n";
 	return round;
 }
+
+vector< vector<double> > reconstruct()
+{
+	vector< vector<double> > res(in_k, vector<double>(ssize,0));
+	for(int ik=0; ik<in_k; ik++)
+	{
+		for(int i=0;i<ssize; i++)
+		{
+			double total = 0;
+			for(int k=0;k<K;k++)
+			{
+				for(int d=-dsize; d<=dsize; d++)
+				{
+					total += z(k,ik,i+d) * d(k,ik,d);
+				}
+			}
+			res[ik][i] = total;
+		}
+	}
+	return res;
+}
+
+int learnDictionary()
+{
+	int round = 0 ;
+	int special = 0;
+	double dstepsize = dictstepsize;
+	double lastLoss= calcLoss();
+
+	while(true)
+	{
+		vector< vector<double> > recon = reconstruct();
+		vector< vector<double> > precalc(in_k,vector<double>(ssize,0));
+
+		for(int ik=0;ik<in_k;ik++)
+		{
+			for(int i=0;i<ssize;i++)
+			{
+				precalc[ik][i] = s(ik,i) - recon[ik][i];
+			}
+		}
+		
+		for(int k=0;k<K;k++)
+		{
+			for(int ik=0;ik<in_k;ik++)
+			{
+				for(int d=-dsize;d<=dsize; d++)
+				{
+					nd(k,ik,d) = 0;
+					for(int i = 0 ; i < ssize;i++)
+					{
+						nd(k,ik,d) += precalc[ik][i] * -z(k,ik,i+d);
+					}
+				}
+			}
+		}
+		
+		for(int k=0;k<K;k++)
+		{
+			for(int ik=0;ik<in_k;ik++)
+			{
+				for(int d=-dsize;d<=dsize; d++)
+				{
+					d(k,ik,d) -=  dstepsize * nd(k,ik,d);
+				}
+			}
+		}
+		// normalizeDictionary(t);
+		round++;
+
+		double loss= calcLoss();
+		printf("DLoss = %f %f = %f\n",lastLoss,loss,loss-lastLoss);
+		lastLoss=loss;
+		// if(fabs(loss-lastLoss) < limitDiffLossDict) break;
+		
+
+		// if(round > dictRound)
+		// {
+		// 	double loss = calcLoss(t);
+		// 	if(loss > 15)
+		// 	{
+		// 		special++;
+		// 		dstepsize = dictstepsize/5.;
+		// 		if(special == 120)
+		// 		{
+		// 			break;
+		// 		}
+		// 	}
+		// 	else
+		// 	{
+		// 		break;
+		// 	}
+		// }
+		
+	}
+	return round;
+}
+
 
 int main(void)
 {	
@@ -595,6 +582,7 @@ int main(void)
 	ZN = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0)));
 	B  = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(outD[3], 0)));
 	S = vector< vector<double> >(inD[2], vector<double>(inD[3],0));
+	ND  = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
 
 	initD();
 	initZ();
@@ -603,7 +591,7 @@ int main(void)
 	initB();
 	// }
 	inference();
-
+	learnDictionary();
 
 	return 0;
 }
