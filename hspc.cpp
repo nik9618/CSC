@@ -1,3 +1,13 @@
+/*
+todo :
+1. optimize z coding.
+2. multithreads.
+
+
+in doubt ? 
+1. normalize input ? 
+*/
+
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -16,8 +26,10 @@
 #include <iomanip>
 #include <cfloat>
 
+using namespace std;
 
 #define d(j,k,i) 	D[j][k][i+dsize]
+#define div(j,k,i) 	D[j][k][i+dsize]
 #define s(j,i)		S[j][i]
 #define z(j,k,i) 	Z[j][k][i+dsize]
 #define zn(j,k,i) 	ZN[j][k][i+dsize]
@@ -25,18 +37,17 @@
 #define nd(j,k,i) 	ND[j][k][i+dsize]
 
 #define T 30
-#define LAMBDA 0
+#define LAMBDA 0.005
 #define inferenceMinRound 100
-#define inferencePercentBreak 0.4 
+#define inferencePercentBreak 0.2
 #define inferenceMaxRound 1000
-#define inferenceDiffLossBreak 30
+// #define inferenceDiffLossBreak 0.01
 
-#define dictMinRound 100
-#define dictMaxRound 100
-
-#define dictstepsize 0.00000001
-
-using namespace std;
+#define dictMinRound 250
+#define dictMaxRound 500
+#define dictDiffLossBreak 0.1
+#define dictPercentBreak 0.1
+#define dictstepsize 0.000000001
 
 int * inD;
 int * outD;
@@ -45,9 +56,9 @@ int in_dsize =0;
 int in_k =0;
 int in_sLen = 0;
 
-int dsize = 10;
+int dsize = 7;
 int ssize = 1214;
-int K = 10;
+int K = 40;
 
 vector< vector< vector<double> > >D; //done
 vector< vector< vector<double> > >Z; //done
@@ -277,14 +288,6 @@ double calcLoss()
 	return loss;
 }
 
-void initD()
-{
-	for(int k=0; k < K;k++)
-		for(int j=0; j<inD[2]; j++)
-			for(int i=-dsize; i<=dsize; i++)
-				d(k,j,i) = rand()%1000;
-	normalizeDictionary();
-}
 void normalizeDictionary()
 {
 	for(int k=0; k < K;k++)
@@ -297,6 +300,15 @@ void normalizeDictionary()
 			for(int i=-dsize; i<=dsize; i++)
 				d(k,j,i) /= sum;
 	}
+}
+
+void initD()
+{
+	for(int k=0; k < K;k++)
+		for(int j=0; j<inD[2]; j++)
+			for(int i=-dsize; i<=dsize; i++)
+				d(k,j,i) = rand()%1000;
+	normalizeDictionary();
 }
 
 void initS(int i)
@@ -316,6 +328,11 @@ void initS(int i)
 			printf("Input Out of Range\n");
 		s(ck[i],ci[i]+in_dsize) = cv[i];
 	}
+}
+
+void normalizeS()
+{
+
 }
 
 void initZ() 
@@ -345,7 +362,6 @@ void initB()
 	}
 }
 
-
 int inference()
 {
 	int round = 0;
@@ -357,40 +373,41 @@ int inference()
 	int positiveCount = 0;
 	vector<int> lastDiff(100,0);
 
-	while(true)
+
+	vector< vector< vector<double> > > DIV  = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(ssize + dsize*2, 0 )));
+
+	for(int k=0;k<K;k++)
 	{
-		// calculate new Z
-		// **** optimizable...
-		// keep divider and find max on the fly...
-		for(int k=0;k<K;k++)
+		for(int ik=0;ik<in_k;ik++)
 		{
-			for(int ik=0;ik<in_k;ik++)
-			// int ik=0;
+			for(int i= -dsize ; i< ssize + dsize; i++)
 			{
-				for(int i= -dsize ; i< ssize + dsize; i++)
+				double sqdivider = 0;
+				for(int j = -dsize; j<=dsize; j++)
 				{
-					double sqdivider = 0;
-					for(int j = -dsize; j<=dsize; j++)
-					{
-						if(i+j < 0 || i+j >= ssize) continue;
-						sqdivider += (d(k,ik,-j) * d(k,ik,-j));
-					}
-					zn(k,ik,i) = shrink(b(k,ik,i),LAMBDA) / sqdivider;
+					if(i+j < 0 || i+j >= ssize) continue;
+					sqdivider += (d(k,ik,-j) * d(k,ik,-j));
 				}
+				DIV[k][ik][i+dsize] = sqdivider;
 			}
 		}
-		//maximum diff Z
+	}
+
+	while(true)
+	{
 		double maxV=-1;
 		int maxK;
 		int maxI;
 		int maxIK;
 
-		for(int k =0 ; k < K ; k++)
+		// calculate new Z //maximum diff Z
+		for(int k=0;k<K;k++)
 		{
-			for(int ik=0; ik<in_k; ik++)
+			for(int ik=0;ik<in_k;ik++)
 			{
-				for(int i=-dsize ; i < ssize + dsize; i++)
+				for(int i= -dsize ; i< ssize + dsize; i++)
 				{
+					zn(k,ik,i) = shrink(b(k,ik,i),LAMBDA) / DIV[k][ik][i+dsize];
 					double fs = fabs(zn(k,ik,i) - z(k,ik,i) );
 					if(fs > maxV )
 					{
@@ -436,9 +453,12 @@ int inference()
 		
 		// stop conditions
 		double diffLoss = newLoss-loss;
-		printf("%d\tLOSS=%.7f\tDiff=%.7f\n",round,newLoss,diffLoss);
+		if(diffLoss>0)
+			printf("%d\tZLOSS=%.7f\tDiff=%.7f ****************\n",round,newLoss,diffLoss);	
+		else
+			printf("%d\tZLOSS=%.7f\tDiff=%.7f\n",round,newLoss,diffLoss);
 		
-		if(fabs(loss-newLoss) < inferenceDiffLossBreak)
+		if( diffLoss > 0)
 		{
 			if(lastDiff[round%100] == 1) positiveCount--;
 			else negativeCount--; 
@@ -457,8 +477,16 @@ int inference()
 		double percentBreak = (double)(positiveCount) / (positiveCount+negativeCount);
 		if(round > inferenceMinRound )
 		{
-			if(percentBreak > inferencePercentBreak ) break;
-			if(round  > inferenceMaxRound ) break;
+			if(percentBreak > inferencePercentBreak )
+			{
+				printf("Percent Break\n");
+				break;
+			}
+			if(round  > inferenceMaxRound )
+			{
+				printf("MaxRound Break\n");
+				break;
+			}
 			if(newLoss==0) break;
 		}
 		loss = newLoss;
@@ -495,6 +523,9 @@ int learnDictionary()
 	int special = 0;
 	double dstepsize = dictstepsize;
 	double lastLoss= calcLoss();
+	int negativeCount = 100;
+	int positiveCount = 0;
+	vector<int> lastDiff(100,0);
 
 	while(true)
 	{
@@ -537,12 +568,45 @@ int learnDictionary()
 		normalizeDictionary();
 		
 		double loss= calcLoss();
-		printf("%d DLoss = %f %f = %f\n",round,lastLoss,loss,loss-lastLoss);
+		if(loss-lastLoss>0)
+			printf("%d\tDLoss = %f %f = %f *******************\n",round,lastLoss,loss,loss-lastLoss);
+		else
+			printf("%d\tDLoss = %f %f = %f\n",round,lastLoss,loss,loss-lastLoss);
 
+		if(loss-lastLoss > 0)
+		{
+			if(lastDiff[round%100] == 1) positiveCount--;
+			else negativeCount--; 
+			lastDiff[round%100] = 1;
+			positiveCount++;
+		}
+		else
+		{
+			if(lastDiff[round%100] == 1) positiveCount--;
+			else negativeCount--; 
+
+			lastDiff[round%100] = -1;
+			negativeCount++;
+		}
+
+		double percentBreak = (double)(positiveCount) / (positiveCount+negativeCount);
 		if(round > dictMinRound)
 		{
-			if(fabs(loss-lastLoss) < limitDiffLossDict) break;
-			if(round > dictMaxRound) break;
+			if(fabs(loss-lastLoss) < dictDiffLossBreak)
+			{
+				printf("DiffLoss Break\n");
+				break;
+			}
+			if(round > dictMaxRound)
+			{
+				printf("MaxRound Break\n");
+				break;
+			}
+			if(percentBreak > dictPercentBreak)
+			{
+				printf("Percent Break\n");
+				break;
+			}
 		}
 		
 		lastLoss=loss;
@@ -577,13 +641,14 @@ int main(void)
 	ND  = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
 
 	initD();
-	initZ();
-	// for(int i  =0 ; i < 3000; i++){
-	initS(3333);
-	initB();
-	// }
-	inference();
-	learnDictionary();
-
+	
+	for(int i  =0 ; i < 3000; i++){
+		initZ();
+		initS(i);
+		initB();
+		inference();
+		learnDictionary();
+	}
+	
 	return 0;
 }
