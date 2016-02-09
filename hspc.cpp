@@ -663,6 +663,76 @@ int learnDictionary(int t)
 	return round;
 }
 
+void reportTesting(int t,double loss,double zround, double dround, int fileID)
+{
+	ofstream myfile;
+	
+	std::stringstream ss;
+	ss <<"mkdir -p /home/kanit/anomalydeep/result_lay2";
+	std::string genfolder = ss.str();
+	int x = system(genfolder.c_str());
+
+	myfile.open ("/home/kanit/anomalydeep/result_lay2/" + to_string(fileID) +".txt");
+	
+	myfile << "Loss="<<loss<<"\n";
+	myfile << "Zround="<<zround<<"\n";
+	myfile << "Dround="<<dround<<"\n";
+	int morezero =0;
+	int all = 0;
+	for(int k =0 ; k < K ; k++)
+	{
+		for(int ik =0 ; ik < in_k ; ik++)
+		{
+			for(int i = -dsize ; i < ssize+dsize;i++)
+			{
+				if(z(t,k,ik,i)!=0)
+				{
+					morezero++;
+				}
+				all++;
+			}
+		}
+	}
+	myfile << "sparsity="<<morezero<<"/"<<all<<"\n\n";
+	myfile << "S" << "=[";	
+	for(int ik = 0 ; ik < in_k ; ik++)
+	{
+		for(int i = 0 ; i < ssize ; i++)
+		{
+			myfile << s(t,ik,i)<<" ";
+		}
+		myfile << ";";
+	}
+	myfile << "]\n\n";
+
+	vector<vector<double> > rec = reconstruct(t);
+	myfile << "R" << "=[";	
+	for(int ik = 0 ; ik < in_k ; ik++)
+	{
+		for(int i = 0 ; i < ssize ; i++)
+		{
+			myfile << rec[ik][i]<<" ";
+		}
+		myfile << ";";
+	}
+	myfile << "]\n\n";
+	
+	myfile << "D" << "=["<<setprecision(6) ;
+	for(int i = 0 ; i < K ; i++)
+	{
+		for(int ik = 0 ; ik < in_k ; ik++)
+		{
+			for (int j = -dsize; j<=dsize ;j++)
+			{
+				myfile << d(t,i,ik,j)<<" ";
+			}
+			myfile << ";";
+		}
+	}
+	myfile << "]\n";
+	myfile.close();
+}
+
 int main(void)
 {	
 	int nSamples = parseBinary(&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&in_codek,&in_codei,&in_codeval);
@@ -708,6 +778,10 @@ int main(void)
 		{
 			round++;
 			printf("%d\t> %f\t%d\t> %f\t%d\t> %f\n",round,l1,r1,l2,r2,l3);
+		}
+		if(t==1)
+		{
+			reportTesting(t,l3,r1,r2, round);
 		}
 	}
 	
