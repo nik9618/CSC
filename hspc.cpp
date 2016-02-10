@@ -1,10 +1,13 @@
 /*
-todo :
+REMEM : 
+We have to admit this ... X is first sparse ... but R does not neccessary sparse after optimization ... but Z have to...
 
-1. gen Z 
+todo :
+1. gen Z after avgLoss less than x. 
 2. stack expanded dictionary 
 
 done : 
+0. calc average Loss
 0. import multiples
 0. debug z coding
 1. optimize z coding.
@@ -45,7 +48,7 @@ using namespace std;
 #define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
 #define T 30
-#define LAMBDA 0.05
+#define LAMBDA 0.01
 #define inferenceMinRound 100
 #define inferencePercentBreak 0.2
 #define inferenceMaxRound 1000
@@ -92,6 +95,8 @@ vector< vector<short> > tmp_codei;
 vector< vector<double> > tmp_codeval;
 
 vector<int> rd;
+
+ofstream * outfile;
 
 
 vector<std::string> &split(const string &s, char delim, std::vector<std::string> &elems) {
@@ -880,6 +885,14 @@ int main(void)
 	printf("K : %d\n",K);
 	printf("T : %d\n",T);
 	
+	outfile = new ofstream[T];
+	for(int i = 0; i< T ; i++)
+	{
+		char outname[150];
+		sprintf(outname,"%sdata-%d.bin",datapath.c_str(),i);
+		outfile[i].open(outname,std::ofstream::binary);
+		writeHead(i);
+	}
 	// testFilePrecision(in_D,in_L,in_S,in_codek,in_codei,in_codeval);
 
 	DM = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
@@ -901,12 +914,18 @@ int main(void)
 		
 	int round = 0;
 	int round0 = 0;
+	
+	double sum100= 0;
+	vector<double> data100(100,0);
+	double num100=0;
+	double avgLoss ; 600;
+
 	#pragma omp parallel for num_threads(T)
 	for(int i  =0 ; i < nSamples; i++){
 		
 		int t = omp_get_thread_num();
 
-		initS(t,rd[i]);
+		initS(t,i);
 		normalizeS(t);
 		initZ(t);
 		initB(t);
@@ -914,10 +933,19 @@ int main(void)
 		double l1 = calcLoss(t);
 		vector<double> a1 = inference(t,l1);
 		vector<double> a2 = learnDictionary(t,a1[1]);
+		
 		#pragma omp critical
 		{
+			//average Loss
+			sum100 -= data100[round%100];
+			data100[round%100] =a2[1];
+			sum100 += a2[1];
+			num100++;
+			if(num100>100)num100=100;
+			avgLoss = sum100/num100;
+
 			round++;
-			printf("%d\t> %d\t> %f\t%.0f\t> %f\t%.0f\t> %f\n",t,round,l1,a1[0],a1[1],a2[0],a2[1]);
+			printf("%d\t1> %d\t2> %f\t%.0f\t3> %f\t%.0f\t4> %f \t5> %f\n",t,round,l1,a1[0],a1[1],a2[0],a2[1],avgLoss);
 		}
 		if(t==0)
 		{
