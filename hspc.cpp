@@ -1,10 +1,11 @@
 /*
 todo :
-0. money CS
+
 1. gen Z 
 2. stack expanded dictionary 
 
 done : 
+0. import multiples
 0. debug z coding
 1. optimize z coding.
 2. multithreads.
@@ -44,7 +45,7 @@ using namespace std;
 #define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
 #define T 30
-#define LAMBDA 0.005
+#define LAMBDA 0.05
 #define inferenceMinRound 100
 #define inferencePercentBreak 0.2
 #define inferenceMaxRound 1000
@@ -57,6 +58,7 @@ using namespace std;
 double dictstepsize = 0.00001;
 
 #define printLoss 0
+#define willImportDict 0
 
 // int * inD;
 // int * outD;
@@ -85,6 +87,9 @@ vector< vector<double> > in_S;
 vector< vector<short> > in_codek;
 vector< vector<short> > in_codei;
 vector< vector<double> > in_codeval;
+vector< vector<short> > tmp_codek;
+vector< vector<short> > tmp_codei;
+vector< vector<double> > tmp_codeval;
 
 vector<int> rd;
 
@@ -367,7 +372,7 @@ void syncDictionary(int t)
 
 void importDictionary()
 {
-	ifstream infile("/home/kanit/Dropbox/arrhythmia_project_shared/result_lay2/14635.txt");	
+	ifstream infile("/home/kanit/Dropbox/arrhythmia_project_shared/result_lay2/25279.txt");	
 	string line;
 	
 	//skip 9 lines
@@ -834,18 +839,49 @@ void reportTesting(int t,double loss,double zround, double dround, int fileID)
 	myfile.close();
 }
 
+void mergeInput( vector< vector<short> > ck, vector< vector<short> > ci, vector< vector<double> > cv)
+{
+	for(int i = 0;  i< ck.size() ;i++)
+	{
+		in_codek.push_back(ck[i]);
+		in_codei.push_back(ci[i]);
+		in_codeval.push_back(cv[i]);
+	}
+}
+
 int main(void)
 {	
-	int nSamples;
-	nSamples = parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-0.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&in_codek,&in_codei,&in_codeval);
-	rd = shuffleArray(nSamples);
+	int nSamples=0;
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-0.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&in_codek,&in_codei,&in_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-1.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-2.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-3.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-4.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-5.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-6.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-7.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-8.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-9.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
+	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
 
+	rd = shuffleArray(nSamples);
+	printf("samples : %d\n",nSamples);
 	printf("in_k : %d\n",in_k);
 	printf("ssize : %d\n",ssize);
 	printf("dsize : %d\n",dsize);
 	printf("K : %d\n",K);
 	printf("T : %d\n",T);
+	
 	// testFilePrecision(in_D,in_L,in_S,in_codek,in_codei,in_codeval);
+
 	DM = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
 	D  = vector< vector< vector< vector<double> > > >(T,vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 ))));
 	Z  = vector< vector< vector<double> > >(T,vector< vector<double > >(K, vector<double>(ssize+2*dsize, 0)));
@@ -857,31 +893,37 @@ int main(void)
 	
 	ssize=607;
 	printf("ssize : %d\n",ssize);
-	// initD();
-	importDictionary();
+	
+	if(willImportDict)
+		importDictionary();
+	else
+		initD();
+		
 	int round = 0;
-
+	int round0 = 0;
 	#pragma omp parallel for num_threads(T)
 	for(int i  =0 ; i < nSamples; i++){
 		
 		int t = omp_get_thread_num();
 
-		initS(t,i);
+		initS(t,rd[i]);
 		normalizeS(t);
 		initZ(t);
 		initB(t);
 		
 		double l1 = calcLoss(t);
 		vector<double> a1 = inference(t,l1);
-		vector<double> a2 = learnDictionary(t,a1[1]); //8.7s->6.6s
+		vector<double> a2 = learnDictionary(t,a1[1]);
 		#pragma omp critical
 		{
 			round++;
 			printf("%d\t> %d\t> %f\t%.0f\t> %f\t%.0f\t> %f\n",t,round,l1,a1[0],a1[1],a2[0],a2[1]);
 		}
-		if(t==1)
+		if(t==0)
 		{
-			reportTesting(t,a2[1],a1[0],a2[0], round);
+			if(round0%5==0)
+				reportTesting(t,a2[1],a1[0],a2[0], round);
+			round0++;
 		}
 	}
 	
