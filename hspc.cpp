@@ -1,10 +1,11 @@
 /*
 todo :
-0. debug z coding
-1. extend length of dictionary to encode periodic data and test .
-2. analyze if the separate stacked version makes sense.
+0. money CS
+1. gen Z 
+2. stack expanded dictionary 
 
 done : 
+0. debug z coding
 1. optimize z coding.
 2. multithreads.
 3. print result.
@@ -42,7 +43,7 @@ using namespace std;
 #define b(t,k,i) 	B[t][k][i+dsize]
 #define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
-#define T 32
+#define T 30
 #define LAMBDA 0.005
 #define inferenceMinRound 100
 #define inferencePercentBreak 0.2
@@ -86,6 +87,22 @@ vector< vector<short> > in_codei;
 vector< vector<double> > in_codeval;
 
 vector<int> rd;
+
+
+vector<std::string> &split(const string &s, char delim, std::vector<std::string> &elems) {
+    stringstream ss(s);
+    string item;
+    while (getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+    return elems;
+}
+
+vector<std::string> split(const string &s, char delim) {
+	vector<string> elems;
+	split(s, delim, elems);
+	return elems;
+}
 
 int parseBinary(string infile, int *dsize, int *k, int *sLen, vector< vector<double> > *D,vector<double> *l, vector< vector<double> > *s, vector< vector<short> > *ck, vector< vector<short> > *ci, vector< vector<double> > *cv)
 {
@@ -346,6 +363,50 @@ void syncDictionary(int t)
 				d(t,k,ik,i)=dm(k,ik,i);
 
 	normalizeDictionary(t);
+}
+
+void importDictionary()
+{
+	ifstream infile("/home/kanit/Dropbox/arrhythmia_project_shared/result_lay2/14635.txt");	
+	string line;
+	
+	//skip 9 lines
+	for(int i = 0 ; i < 9 ;i++) getline(infile, line);
+
+	int k=0;
+	while(getline(infile, line))
+	{
+		int st = line.find("[");
+		int ed = line.find("]");
+		string nums = line.substr(st,ed-st);
+		vector<string> x = split(nums, ' ');
+		int i = 0;
+		for(int ik=0;ik<in_k;ik++)
+		{
+			for(int d=-dsize; d<=dsize;d++)
+			{
+				if(x[i][0] == ';')
+					x[i] = x[i].substr(1,strlen(x[i].c_str())-1);
+				dm(k,ik,d) = strtod(x[i].c_str(), NULL);
+				i++;
+			}
+		}
+		k++;
+	}
+	printf("Imported D : %d\n",K);
+	for(int k=0; k < K;k++)
+	{
+		for(int j=0; j<in_k; j++)
+		{
+			for(int i=-dsize; i<=dsize; i++)
+			{
+				for(int t=0; t<T; t++)
+				{
+					d(t,k,j,i) = dm(k,j,i);	
+				}
+			}
+		}
+	}
 }
 
 void initD()
@@ -758,7 +819,7 @@ void reportTesting(int t,double loss,double zround, double dround, int fileID)
 	
 	for(int i = 0 ; i < K ; i++)
 	{
-		myfile << "D" <<i<< "=["<<setprecision(6) ;
+		myfile << "D" <<i<< "=["<<setprecision(8) ;
 		for(int ik = 0 ; ik < in_k ; ik++)
 		{
 			for (int j = -dsize; j<=dsize ;j++)
@@ -796,7 +857,8 @@ int main(void)
 	
 	ssize=607;
 	printf("ssize : %d\n",ssize);
-	initD();
+	// initD();
+	importDictionary();
 	int round = 0;
 
 	#pragma omp parallel for num_threads(T)
