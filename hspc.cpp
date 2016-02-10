@@ -43,22 +43,22 @@ using namespace std;
 #define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
 #define T 32
-#define LAMBDA 0.01
+#define LAMBDA 0.005
 #define inferenceMinRound 100
-#define inferencePercentBreak 0.3
-#define inferenceMaxRound 200
-// #define inferenceDiffLossBreak 0.01
+#define inferencePercentBreak 0.2
+#define inferenceMaxRound 1000
+#define inferenceDiffLossBreak 0.5
 
-#define dictMinRound 20
-#define dictMaxRound 75
-#define dictDiffLossBreak 0.2
+#define dictMinRound 10
+#define dictMaxRound 20
+#define dictDiffLossBreak 0.1
 #define dictPercentBreak 0.1
-#define dictstepsize 0.0000001
+double dictstepsize = 0.00001;
 
-#define printLoss FALSE
+#define printLoss 0
 
-int * inD;
-int * outD;
+// int * inD;
+// int * outD;
 
 int in_dsize =0;
 int in_k =0;
@@ -66,7 +66,7 @@ int in_sLen = 0;
 
 int dsize = 7;
 int ssize = 1214;
-int K = 50;
+int K = 100;
 
 vector< vector< vector<double> > >DM;
 vector< vector< vector< vector<double> > > >D;
@@ -76,6 +76,7 @@ vector< vector< vector<double> > >B;
 vector< vector< vector<double> > >S;
 vector< vector< vector< vector<double> > > >Zn;
 vector< vector< vector< vector<double> > > >ND;
+vector< vector< vector<double> > > recon;
 
 vector< vector<double> > in_D;
 vector<double> in_L;
@@ -277,12 +278,12 @@ double shrink(double beta, double lamb)
 
 vector< vector<double> > reconstruct(int t)
 {
-	vector< vector<double> > res(in_k, vector<double>(ssize,0));
+	double total;	
 	for(int i=0;i<ssize; i++)
 	{
 		for(int ik=0; ik<in_k; ik++)
 		{
-			double total = 0;	
+			total=0;
 			for(int k=0;k<K;k++)
 			{
 				for(int d=-dsize; d<=dsize; d++)
@@ -290,21 +291,29 @@ vector< vector<double> > reconstruct(int t)
 					total += z(t,k,i+d) * d(t,k,ik,d);
 				}
 			}
-			res[ik][i] = total;
+			recon[t][ik][i] = total;
 		}
 	}
-	return res;
+	return recon[t];
 }
 
 double calcLoss(int t)
 {
 	double loss=0;
-	vector< vector<double> > rec = reconstruct(t);
-	for(int ik = 0 ; ik<in_k; ik++)
-	{	
-		for(int i=0 ; i<ssize ;i++)
+
+	for(int i=0;i<ssize; i++)
+	{
+		for(int ik=0; ik<in_k; ik++)
 		{
-			loss+= fabs(rec[ik][i] - s(t,ik,i)) * fabs(rec[ik][i] - s(t,ik,i));
+			double total = s(t,ik,i);
+			for(int k=0;k<K;k++)
+			{
+				for(int d=-dsize; d<=dsize; d++)
+				{
+					total -= z(t,k,i+d) * d(t,k,ik,d);
+				}
+			}
+			loss += total*total;
 		}
 	}
 	return loss;
@@ -315,10 +324,10 @@ void normalizeDictionary(int t)
 	for(int k=0; k < K;k++)
 	{
 		double sum = 0;
-		for(int j=0; j<inD[2]; j++)
+		for(int j=0; j<in_k; j++)
 			for(int i=-dsize; i<=dsize; i++)
 				sum+=d(t,k,j,i);
-		for(int j=0; j<inD[2]; j++)
+		for(int j=0; j<in_k; j++)
 			for(int i=-dsize; i<=dsize; i++)
 				d(t,k,j,i) /= sum;
 	}
@@ -340,10 +349,10 @@ void syncDictionary(int t)
 }
 
 void initD()
-{		
+{
 	for(int k=0; k < K;k++)
 	{
-		for(int j=0; j<inD[2]; j++)
+		for(int j=0; j<in_k; j++)
 		{
 			for(int i=-dsize; i<=dsize; i++)
 			{
@@ -355,17 +364,17 @@ void initD()
 	for(int k=0; k < K;k++)
 	{
 		double sum = 0;
-		for(int j=0; j<inD[2]; j++)
+		for(int j=0; j<in_k; j++)
 			for(int i=-dsize; i<=dsize; i++)
 				sum+=dm(k,j,i);
-		for(int j=0; j<inD[2]; j++)
+		for(int j=0; j<in_k; j++)
 			for(int i=-dsize; i<=dsize; i++)
 				dm(k,j,i) /= sum;
 	}
 
 	for(int k=0; k < K;k++)
 	{
-		for(int j=0; j<inD[2]; j++)
+		for(int j=0; j<in_k; j++)
 		{
 			for(int i=-dsize; i<=dsize; i++)
 			{
@@ -384,7 +393,7 @@ void initS(int t, int i)
 	vector<short> ci = in_codei[i];
 	vector<double> cv = in_codeval[i];
 
-	for(int i=0 ; i<inD[2]; i++)
+	for(int i=0 ; i<in_k; i++)
 	{
 		fill(S[t][i].begin(), S[t][i].end(), 0);
 	}
@@ -397,14 +406,49 @@ void initS(int t, int i)
 	}
 }
 
-void normalizeS()
-{// no normalization :/
+void normalizeS(int t)
+{
+	double sum = 0;
+	double sum2 = 0;
+	for(int ik = 0 ; ik < in_k;ik++)
+	{
+		for(int i = 0 ; i < ssize*2;i++)
+		{
+			sum+=s(t,ik,i);
+			sum2 =(s(t,ik,i)*s(t,ik,i))+sum2;
+		} 
+	}
+	double mean = sum/ssize;
+	double std = sqrt(sum2/ssize-mean*mean);
+	
+	if(std == std && std > 0.0001)
+	{
+		for(int ik = 0 ; ik < in_k;ik++)
+		{
+			for(int i = 0 ; i < ssize*2;i++)
+			{
+				s(t,ik,i) = s(t,ik,i)/std;
+				// s(t,i) = ((s(t,i)-mean));
+				// if(s(t,i)!=s(t,i)) anynan++;
+			}
+		}
+	}
+
+	for(int ik = 0 ; ik < in_k;ik++)
+	{
+		for(int i = 0 ; i < ssize;i++)
+		{
+			s(t,ik,i) = abs(s(t,ik,2*i))>abs(s(t,ik,2*i+1)) ? s(t,ik,2*i) : s(t,ik,2*i+1);
+		}
+	}
 }
+
+
 
 void initZ(int t) 
 {
 	for(int k=0;k<K;k++)
-		for(int i=-dsize; i<inD[3]+dsize; i++)
+		for(int i=-dsize; i<ssize+dsize; i++)
 			z(t,k,i) = 0;
 }
 
@@ -427,16 +471,12 @@ void initB(int t)
 	}
 }
 
-int inference(int t)
+vector<double> inference(int t,double initLoss)
 {
 	int round = 0;
 	int lastK=-1;
 	int lastI=-1;
-	double loss = calcLoss(t);
-	int negativeCount = 100;
-	int positiveCount = 0;
-	vector<int> lastDiff(100,0);
-
+	double loss = initLoss;
 
 	vector< vector<double> > DIV(K, vector<double>(ssize + dsize*2, 0 ));
 
@@ -454,7 +494,7 @@ int inference(int t)
 					sqdivider += (d(t,k,ik,-j) * d(t,k,ik,-j));
 				}
 			}
-			DIV[k][i+dsize] = sqdivider;
+			DIV[k][i+dsize] = 1/sqdivider;
 		}
 	}
 
@@ -469,11 +509,11 @@ int inference(int t)
 		{
 			for(int i= -dsize ; i< ssize + dsize; i++)
 			{
-				zn(t,k,i) = shrink(b(t,k,i),LAMBDA) / DIV[k][i+dsize];
+				zn(t,k,i) = shrink(b(t,k,i),LAMBDA) * DIV[k][i+dsize];
 				double fs = fabs(zn(t,k,i) - z(t,k,i) );
 				if(fs > maxV )
 				{
-					if(lastK==k && lastI==i) printf("pick same \n");
+					// if(lastK==k && lastI==i) printf("pick same \n");
 					maxV=fs;
 					maxK=k;
 					maxI=i;
@@ -511,75 +551,81 @@ int inference(int t)
 
 		z(t,maxK,maxI) = zn(t,maxK,maxI);
 		b(t,maxK,maxI) = savedBeta;
-		double newLoss = calcLoss(t);
 		
-		// stop conditions
-		double diffLoss = newLoss-loss;
-#ifndef printLoss
-		if(diffLoss>0)
-			printf("%d %d\tZLOSS=%.7f\tDiff=%.7f ****************\n",t,round,newLoss,diffLoss);	
-		else
-			printf("%d %d\tZLOSS=%.7f\tDiff=%.7f\n",t,round,newLoss,diffLoss);
-#endif
-		if( diffLoss > 0)
+		if(round %40==39)
 		{
-			if(lastDiff[round%100] == 1) positiveCount--;
-			else negativeCount--; 
-			lastDiff[round%100] = 1;
-			positiveCount++;
-		}
-		else
-		{
-			if(lastDiff[round%100] == 1) positiveCount--;
-			else negativeCount--; 
-
-			lastDiff[round%100] = -1;
-			negativeCount++;
-		}
-
-		double percentBreak = (double)(positiveCount) / (positiveCount+negativeCount);
-		if(round > inferenceMinRound )
-		{
-			if(percentBreak > inferencePercentBreak )
+			double newLoss = calcLoss(t);
+			
+			// stop conditions
+			double diffLoss = newLoss-loss;
+			if(t==0 && printLoss)
 			{
-				// printf("Percent Break\n");
-				break;
+				if(diffLoss>0)
+					printf("%d %d\tZLOSS=%.7f\tDiff=%.7f ****************\n",t,round,newLoss,diffLoss);	
+				else
+					printf("%d %d\tZLOSS=%.7f\tDiff=%.7f\n",t,round,newLoss,diffLoss);
 			}
-			if(round  > inferenceMaxRound )
-			{
-				// printf("MaxRound Break\n");
-				break;
-			}
-			if(newLoss==0) break;
-		}
 
-		loss = newLoss;
+			if(round > inferenceMinRound )
+			{
+				if( fabs(diffLoss) < inferenceDiffLossBreak )
+				{
+					// printf("Percent Break\n");
+					break;
+				}
+				if(round  > inferenceMaxRound )
+				{
+					// printf("MaxRound Break\n");
+					break;
+				}
+				if(newLoss==0) break;
+			}
+
+			loss = newLoss;
+		}
 		round++;
 	}
 	// cout <<"]\n";
-	return round;
+	vector<double> ans(2);
+	ans[0]=round;
+	ans[1]=loss;
+	return ans;
 }
 
-int learnDictionary(int t)
+vector<double> learnDictionary(int t, double initLoss)
 {
 	int round = 0 ;
 	int special = 0;
 	double dstepsize = dictstepsize;
-	double lastLoss= calcLoss(t);
+	double lastLoss= initLoss;
 	int negativeCount = 100;
 	int positiveCount = 0;
 	vector<int> lastDiff(100,0);
 
+	// vector< vector<double> > recon = reconstruct(t);
+	vector< vector<double> > precalc(in_k,vector<double>(ssize,0));
+
 	while(true)
 	{
-		vector< vector<double> > recon = reconstruct(t);
-		vector< vector<double> > precalc(in_k,vector<double>(ssize,0));
-
-		for(int ik=0;ik<in_k;ik++)
+		//tied in to boost performance
+		double loss=0;
+		double tmpRecon;
+		for(int i=0;i<ssize; i++)
 		{
-			for(int i=0;i<ssize;i++)
+			for(int ik=0; ik<in_k; ik++)
 			{
-				precalc[ik][i] = s(t,ik,i) - recon[ik][i];
+				tmpRecon = 0;
+				for(int k=0;k<K;k++)
+				{
+					for(int d=-dsize; d<=dsize; d++)
+					{
+						tmpRecon +=  z(t,k,i+d) * d(t,k,ik,d);
+					}
+				}
+				double diff = s(t,ik,i)-tmpRecon;
+				precalc[ik][i] = diff;
+				loss += (diff)*(diff);
+				recon[t][ik][i]=tmpRecon;
 			}
 		}
 		
@@ -594,29 +640,26 @@ int learnDictionary(int t)
 					{
 						nd(t,k,ik,d) += precalc[ik][i] * -z(t,k,i+d);
 					}
-				}
-			}
-		}
-		
-		for(int k=0;k<K;k++)
-		{
-			for(int ik=0;ik<in_k;ik++)
-			{
-				for(int d=-dsize;d<=dsize; d++)
-				{
 					d(t,k,ik,d) -=  dstepsize * nd(t,k,ik,d);
 				}
 			}
 		}
+		
 		syncDictionary(t);
 		
-		double loss= calcLoss(t);
-#ifndef printLoss		
-		if(loss-lastLoss>0)
-			printf("%d\tDLoss = %f %f = %f *******************\n",round,lastLoss,loss,loss-lastLoss);
-		else
-			printf("%d\tDLoss = %f %f = %f\n",round,lastLoss,loss,loss-lastLoss);
-#endif
+		if(t==0 && printLoss)
+		{
+			if(loss-lastLoss>0)
+				printf("%d\tDLoss = %f %f = %f *******************\n",round,lastLoss,loss,loss-lastLoss);
+			else
+				printf("%d\tDLoss = %f %f = %f\n",round,lastLoss,loss,loss-lastLoss);
+		}
+		
+		if(loss-lastLoss > 0)
+		{
+			dstepsize/=2;
+		}
+
 		if(loss-lastLoss > 0)
 		{
 			if(lastDiff[round%100] == 1) positiveCount--;
@@ -656,7 +699,10 @@ int learnDictionary(int t)
 		lastLoss=loss;
 		round++;
 	}
-	return round;
+	vector<double> ans(2);
+	ans[0]=round;
+	ans[1]=lastLoss;
+	return ans;
 }
 
 void reportTesting(int t,double loss,double zround, double dround, int fileID)
@@ -733,12 +779,6 @@ int main(void)
 	nSamples = parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-0.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&in_codek,&in_codei,&in_codeval);
 	rd = shuffleArray(nSamples);
 
-	int iD[]  = {nSamples,1,in_k,in_sLen+2*in_dsize};
-	int oD[] = {nSamples,K,1,in_sLen+2*in_dsize+2*dsize};
-	inD = iD;
-	outD = oD;
-	printf("input  : {%d, %d, %d, %d}\n",inD[0],inD[1],inD[2],inD[3]);
-	printf("output : {%d, %d, %d, %d}\n",outD[0],outD[1],outD[2],outD[3]);
 	printf("in_k : %d\n",in_k);
 	printf("ssize : %d\n",ssize);
 	printf("dsize : %d\n",dsize);
@@ -747,12 +787,15 @@ int main(void)
 	// testFilePrecision(in_D,in_L,in_S,in_codek,in_codei,in_codeval);
 	DM = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
 	D  = vector< vector< vector< vector<double> > > >(T,vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 ))));
-	Z  = vector< vector< vector<double> > >(T,vector< vector<double > >(K, vector<double>(outD[3], 0)));
-	ZN = vector< vector< vector<double> > >(T,vector< vector<double > >(K, vector<double>(outD[3], 0)));
-	B  = vector< vector< vector<double> > >(T,vector< vector<double > >(K, vector<double>(outD[3], 0)));
-	S  = vector< vector< vector<double> > >(T, vector< vector<double> >(inD[2], vector<double>(inD[3],0)));
+	Z  = vector< vector< vector<double> > >(T,vector< vector<double > >(K, vector<double>(ssize+2*dsize, 0)));
+	ZN = vector< vector< vector<double> > >(T,vector< vector<double > >(K, vector<double>(ssize+2*dsize, 0)));
+	B  = vector< vector< vector<double> > >(T,vector< vector<double > >(K, vector<double>(ssize+2*dsize, 0)));
+	S  = vector< vector< vector<double> > >(T, vector< vector<double> >(in_k, vector<double>(ssize,0)));
 	ND  = vector< vector< vector< vector<double> > > >(T, vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 ))));
-
+	recon = vector< vector< vector<double> > >(T,vector< vector<double> >(in_k, vector<double>(ssize,0)));
+	
+	ssize=607;
+	printf("ssize : %d\n",ssize);
 	initD();
 	int round = 0;
 
@@ -762,26 +805,21 @@ int main(void)
 		int t = omp_get_thread_num();
 
 		initS(t,i);
+		normalizeS(t);
 		initZ(t);
 		initB(t);
 		
 		double l1 = calcLoss(t);
-		// printf("BeginLoss=%f\n",l1);
-		int r1 = inference(t);
-		double l2 = calcLoss(t);
-		// printf("InferLoss=%f\n",l2);
-		int r2 = learnDictionary(t);
-		double l3 = calcLoss(t);
-		// printf("DictLoss=%f\n",l3);
-		
+		vector<double> a1 = inference(t,l1);
+		vector<double> a2 = learnDictionary(t,a1[1]); //8.7s->6.6s
 		#pragma omp critical
 		{
 			round++;
-			printf("%d\t> %f\t%d\t> %f\t%d\t> %f\n",round,l1,r1,l2,r2,l3);
+			printf("%d\t> %d\t> %f\t%.0f\t> %f\t%.0f\t> %f\n",t,round,l1,a1[0],a1[1],a2[0],a2[1]);
 		}
 		if(t==1)
 		{
-			reportTesting(t,l3,r1,r2, round);
+			reportTesting(t,a2[1],a1[0],a2[0], round);
 		}
 	}
 	
