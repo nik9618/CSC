@@ -52,7 +52,7 @@ string datapath = "/home/kanit/anomalydeep/dataout_lay3/";
 #define b(t,k,i) 	B[t][k][i+dsize]
 #define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
-#define T 8
+#define T 2
 #define LAMBDA 0.001
 #define inferenceMinRound 50
 #define inferencePercentBreak 0.2

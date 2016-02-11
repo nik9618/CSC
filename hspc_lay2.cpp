@@ -38,11 +38,6 @@ in doubt ?
 
 using namespace std;
 
-#define binaryPath "/home/kanit/anomalydeep/dataout_lay2/data-%d.bin"
-#define matlabfeedpath "/home/kanit/Dropbox/arrhythmia_project_shared/result_lay3/"
-#define matlabdictpath "/home/kanit/Dropbox/arrhythmia_project_shared/result_lay3/1299.txt"
-string datapath = "/home/kanit/anomalydeep/dataout_lay3/";
-
 #define dm(j,k,i) 	DM[j][k][i+dsize]
 #define d(t,j,k,i) 	D[t][j][k][i+dsize]
 #define div(t,j,k,i) 	D[t][j][k][i+dsize]
@@ -52,11 +47,11 @@ string datapath = "/home/kanit/anomalydeep/dataout_lay3/";
 #define b(t,k,i) 	B[t][k][i+dsize]
 #define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
-#define T 8
-#define LAMBDA 0.001
-#define inferenceMinRound 50
+#define T 30
+#define LAMBDA 0.01
+#define inferenceMinRound 100
 #define inferencePercentBreak 0.2
-#define inferenceMaxRound 500
+#define inferenceMaxRound 1000
 #define inferenceDiffLossBreak 0.5
 
 #define dictMinRound 10
@@ -66,15 +61,15 @@ string datapath = "/home/kanit/anomalydeep/dataout_lay3/";
 double dictstepsize = 0.00001;
 
 #define printLoss 0
-#define willImportDict 0
-#define genZmode 0
+#define willImportDict 1
+#define genZmode 1
 
 int in_dsize =0;	// input dsize
 int in_k =0;		// input k
 int in_prevk =0;	
 int in_sLen = 0; 	// original signalLength
 
-int dsize = 10;
+int dsize = 7;
 int K = 100;
 
 // -------
@@ -108,7 +103,7 @@ vector< vector<double> > tmp2_codeval;
 
 vector<int> rd;
 ofstream * outfile;
-
+string datapath = "/home/kanit/anomalydeep/dataout_lay2/";
 
 vector<std::string> &split(const string &s, char delim, std::vector<std::string> &elems) {
 	stringstream ss(s);
@@ -163,7 +158,6 @@ int parseBinary(
 		*prevk = _ik;
 		*sLen = _ssize+_dsize*2;
 
-		// printf("%d %d %d %d",_dsize,_k,_ik, _ssize);
 		vector< vector< vector<double> > > Dtmp = vector< vector< vector<double> >>(_k,vector< vector<double> >(_ik, vector<double>(_dsize*2+1,0)));
 
 		for(int i = 0 ; i < _k ; i++)
@@ -190,7 +184,7 @@ int parseBinary(
 		short stmp;
 		short dindex;
 		short sindex;
-		char * buf = (char*)malloc(10000000);
+		char * buf = (char*)malloc(100000);
 		
 		int count = 0 ;
 		while(file.good())
@@ -201,7 +195,7 @@ int parseBinary(
 			if(!file.good()) break;
 			count++;
 		}
-
+		
 		vector<double> ls = vector<double>(count,0);
 		vector< vector<short> > in_codek = vector< vector<short> >(count, vector<short>(0,0) );
 		vector< vector<short> > in_codei = vector< vector<short> >(count, vector<short>(0,0) );
@@ -216,7 +210,6 @@ int parseBinary(
 		//discard dictionary
 		file.read((char*)&recordLength, 4);
 		file.read(buf, recordLength);
-
 		
 		for(int i =0 ;  i < count ;i++)
 		{
@@ -308,7 +301,8 @@ void testFilePrecision(vector< vector< vector<double> > > in_D,vector<double> in
 		double loss = 0;
 		for(int j=0;j<ssize-2*in_dsize; j++)
 		{
-			for(int pk=0; pk<in_prevk; pk++)
+			// for(int pk=0; pk<in_prevk; pk++)
+			int pk=0;
 			{
 				double total = 0;
 				for(int ik=0; ik<in_k; ik++)
@@ -321,7 +315,7 @@ void testFilePrecision(vector< vector< vector<double> > > in_D,vector<double> in
 				loss += (X[pk][j] - total) * (X[pk][j] - total);
 			}
 		}
-		if(fabs(in_L[i]-loss )> 0.001)printf("FAIL RECONCILE : %f %f %f\n",in_L[i]-loss ,loss, in_L[i]); 
+		if(fabs(in_L[i]-loss )> 0.001) printf("FAIL RECONCILE : %f\n",in_L[i]-loss ); 
 		#pragma omp critical
 		{
 			sumLoss += in_L[i]-loss;
@@ -411,7 +405,7 @@ void syncDictionary(int t)
 
 void importDictionary()
 {
-	ifstream infile(matlabdictpath);	
+	ifstream infile("/home/kanit/Dropbox/arrhythmia_project_shared/result_lay2/1299.txt");	
 	string line;
 	
 	//skip 9 lines
@@ -817,7 +811,7 @@ void reportTesting(int t,double loss,double zround, double dround, int fileID)
 	// std::string genfolder = ss.str();
 	// int x = system(genfolder.c_str());
 
-	myfile.open (matlabfeedpath + to_string(fileID) +".txt");
+	myfile.open ("/home/kanit/Dropbox/arrhythmia_project_shared/result_lay2/" + to_string(fileID) +".txt");
 	
 	myfile << "Loss="<<loss<<"\n";
 	myfile << "Zround="<<zround<<"\n";
@@ -999,10 +993,7 @@ int main(void)
 	int nSamples=0;
 	
 	//main data
-	char dataName[100];
-	sprintf(dataName,binaryPath,0);
-	nSamples += parseBinary(
-		dataName,
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_lay1/data-0.bin",
 		&in_dsize,
 		&in_k,
 		&in_prevk,
@@ -1022,7 +1013,8 @@ int main(void)
 	//more data
 	for(int i =1 ; i<30;i++)
 	{
-		sprintf(dataName,binaryPath,i);
+		char dataName[100];
+		sprintf(dataName,"/home/kanit/anomalydeep/dataout_lay1/data-%d.bin",i);
 		nSamples += parseBinary(
 			dataName,
 			&in_dsize,
@@ -1061,7 +1053,7 @@ int main(void)
 	ND  = vector< vector< vector< vector<double> > > >(T, vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 ))));
 	recon = vector< vector< vector<double> > >(T,vector< vector<double> >(in_k, vector<double>(ssize,0)));
 	
-	ssize=310; // max pooling....
+	ssize=607; // max pooling....
 	printf("ssize : %d\n",ssize);
 	//parameters settled
 
