@@ -38,9 +38,9 @@ in doubt ?
 
 using namespace std;
 
-#define binaryPath "/home/kanit/anomalydeep/dataout_lay2/data-%d.bin"
+#define binaryPath "/home/kanit/anomalydeep/dataout_lay3/data-%d.bin"
 #define matlabfeedpath "/home/kanit/Dropbox/arrhythmia_project_shared/result_lay3/"
-#define matlabdictpath "/home/kanit/Dropbox/arrhythmia_project_shared/result_lay3/1299.txt"
+#define matlabdictpath "/home/kanit/Dropbox/arrhythmia_project_shared/result_lay3/13155.txt"
 string datapath = "/home/kanit/anomalydeep/dataout_lay3/";
 
 #define dm(j,k,i) 	DM[j][k][i+dsize]
@@ -52,7 +52,7 @@ string datapath = "/home/kanit/anomalydeep/dataout_lay3/";
 #define b(t,k,i) 	B[t][k][i+dsize]
 #define nd(t,j,k,i) 	ND[t][j][k][i+dsize]
 
-#define T 2
+#define T 30
 #define LAMBDA 0.001
 #define inferenceMinRound 50
 #define inferencePercentBreak 0.2
@@ -66,8 +66,8 @@ string datapath = "/home/kanit/anomalydeep/dataout_lay3/";
 double dictstepsize = 0.00001;
 
 #define printLoss 0
-#define willImportDict 0
-#define genZmode 0
+#define willImportDict 1
+#define genZmode 1
 
 int in_dsize =0;	// input dsize
 int in_k =0;		// input k
