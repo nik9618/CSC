@@ -25,7 +25,7 @@
 #define b(t,k,i) 	B[t][k][i+margin]
 
 #define flagImportDict true
-#define maxData 2000000
+#define maxData 1000000
 #define sigSize 1250
 #define bandFilterSize 47 //@ 2 hz
 #define MAFilterSize 5 
@@ -68,7 +68,7 @@ using namespace std;
 
 string resultpath = "/home/kanit/anomalydeep/";
 
-string datapath = "/home/kanit/anomalydeep/dataout/";
+string datapath = "/home/kanit/anomalydeep/dataout_lay1/";
 
 vector< vector<double> > S;
 vector< vector<double> > OS;
@@ -731,15 +731,19 @@ void writeFile(int t,double loss)
 		}
 	}
 
-	int recordLen = 8 + 2 + ssize*4  + 2 + (2+2+4) * val.size();
+	int recordLen = 8 + 2 + ssize*8  + 2 + (2+2+4) * val.size();
 	
 	outfile[t].write((char*) &recordLen, 4);
 	outfile[t].write((char*) &loss, 8);
 	short ssize_short = (short)ssize;
 	outfile[t].write((char*) &ssize_short, 2);
+	short zero = 0;
 	for(int i =0 ; i< ssize;i++)
 	{
 		float sf = (float)s(t,i);
+		short pos = (short)i;
+		outfile[t].write((char*) &zero,2);
+		outfile[t].write((char*) &pos,2);
 		outfile[t].write((char*) &sf,4);
 	}
 
@@ -757,10 +761,13 @@ void writeFile(int t,double loss)
 
 void writeHead(int t)
 {
-	int recordLen = K*(dsize*2+1)*4 +4+4;
+	int recordLen = K*(dsize*2+1)*4 +4 +4 +4 +4;
+	int in_k=1;
 	outfile[t].write((char*) &recordLen, 4);
-	outfile[t].write((char*) &dsize, 4);
 	outfile[t].write((char*) &K, 4);
+	outfile[t].write((char*) &in_k, 4);
+	outfile[t].write((char*) &dsize, 4);
+	outfile[t].write((char*) &ssize, 4);
 	
 	for(int k =0 ; k < K ; k++)
 	{
@@ -869,6 +876,7 @@ int main(int argc, char** argv)
 		}
 		writeFile(t,zLoss);
 	}
+
  	for(int i = 0; i< T ; i++)
 	{
 		outfile[i].close();

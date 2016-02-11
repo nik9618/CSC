@@ -61,19 +61,18 @@ using namespace std;
 double dictstepsize = 0.00001;
 
 #define printLoss 0
-#define willImportDict 0
+#define willImportDict 1
 
-// int * inD;
-// int * outD;
-
-int in_dsize =0;
-int in_k =0;
-int in_sLen = 0;
+int in_dsize =0;	// input dsize
+int in_k =0;		// input k
+int in_prevk =0;	
+int in_sLen = 0; 	// original signalLength
 
 int dsize = 7;
-int ssize = 1214;
 int K = 100;
 
+// -------
+int ssize ;
 vector< vector< vector<double> > >DM;
 vector< vector< vector< vector<double> > > >D;
 vector< vector< vector<double> > >Z;
@@ -84,28 +83,34 @@ vector< vector< vector< vector<double> > > >Zn;
 vector< vector< vector< vector<double> > > >ND;
 vector< vector< vector<double> > > recon;
 
-vector< vector<double> > in_D;
-vector<double> in_L;
-vector< vector<double> > in_S;
+vector< vector< vector<double> > > prev_D;
+vector<double> prev_L;
+vector< vector<short> > prev_codek;
+vector< vector<short> > prev_codei;
+vector< vector<double> > prev_codeval;
 vector< vector<short> > in_codek;
 vector< vector<short> > in_codei;
 vector< vector<double> > in_codeval;
-vector< vector<short> > tmp_codek;
-vector< vector<short> > tmp_codei;
-vector< vector<double> > tmp_codeval;
+
+vector<double> tmp_L;
+vector< vector<short> > tmp1_codek;
+vector< vector<short> > tmp1_codei;
+vector< vector<double> > tmp1_codeval;
+vector< vector<short> > tmp2_codek;
+vector< vector<short> > tmp2_codei;
+vector< vector<double> > tmp2_codeval;
 
 vector<int> rd;
-
 ofstream * outfile;
-
+string datapath = "/home/kanit/anomalydeep/dataout/";
 
 vector<std::string> &split(const string &s, char delim, std::vector<std::string> &elems) {
-    stringstream ss(s);
-    string item;
-    while (getline(ss, item, delim)) {
-        elems.push_back(item);
-    }
-    return elems;
+	stringstream ss(s);
+	string item;
+	while (getline(ss, item, delim)) {
+		elems.push_back(item);
+	}
+	return elems;
 }
 
 vector<std::string> split(const string &s, char delim) {
@@ -114,34 +119,56 @@ vector<std::string> split(const string &s, char delim) {
 	return elems;
 }
 
-int parseBinary(string infile, int *dsize, int *k, int *sLen, vector< vector<double> > *D,vector<double> *l, vector< vector<double> > *s, vector< vector<short> > *ck, vector< vector<short> > *ci, vector< vector<double> > *cv)
+int parseBinary(
+	string infile,
+	int *dsize,
+	int *k,
+	int *prevk,
+	int *sLen,
+	vector< vector< vector<double> > > *D,
+	vector<double> *l,
+	vector< vector<short> > *inck,
+	vector< vector<short> > *inci,
+	vector< vector<double> > *incv,
+	vector< vector<short> > *outck,
+	vector< vector<short> > *outci,
+	vector< vector<double> > *outcv)
 {
 	ifstream file;
 	file.open(infile,ifstream::binary);
-
+	
 	if (file.is_open()) {
 	
 		// parse Dict
 		int recordLength = 0;
 		int _dsize;
 		int _k;
+		int _ik;
+		int _ssize;
 
 		file.read((char*)&recordLength, 4);
-		file.read((char*)&_dsize, 4);
 		file.read((char*)&_k, 4);
-
+		file.read((char*)&_ik, 4);
+		file.read((char*)&_dsize, 4);
+		file.read((char*)&_ssize, 4);
+		
 		*dsize = _dsize;
 		*k = _k;
+		*prevk = _ik;
+		*sLen = _ssize+_dsize*2;
 
-		vector< vector<double> > Dtmp = vector< vector<double> >(_k, vector<double>(_dsize*2+1,0));
+		vector< vector< vector<double> > > Dtmp = vector< vector< vector<double> >>(_k,vector< vector<double> >(_ik, vector<double>(_dsize*2+1,0)));
 
 		for(int i = 0 ; i < _k ; i++)
 		{
-			for (int j = 0 ; j < _dsize*2+1;j++)
+			for(int ik = 0 ; ik < _ik ; ik++)
 			{
-				float d = 0;
-				file.read((char*)&d,4);
-				Dtmp[i][j]=(double)d;
+				for (int j = 0 ; j < _dsize*2+1;j++)
+				{
+					float d = 0;
+					file.read((char*)&d,4);
+					Dtmp[i][ik][j]=(double)d;
+				}
 			}
 		} 
 		*D = Dtmp;
@@ -165,22 +192,21 @@ int parseBinary(string infile, int *dsize, int *k, int *sLen, vector< vector<dou
 			if(!file.good()) break;
 			file.read(buf, chunkLength);
 			if(!file.good()) break;
-			int idx = 0 ;
-			int take = 0;
-			take=8; memcpy(&loss,buf+idx,take); idx+=take;
-			take=2; memcpy(&sigLen,buf+idx,take); idx+=take;
-			orig_sigLen = sigLen;
 			count++;
 		}
-		*sLen = orig_sigLen;
 		
 		vector<double> ls = vector<double>(count,0);
-		vector< vector<double> > sig = vector< vector<double> >(count, vector<double>(sigLen,0) );
-		vector< vector<short> > codek = vector< vector<short> >(count, vector<short>(0,0) );
-		vector< vector<short> > codei = vector< vector<short> >(count, vector<short>(0,0) );
-		vector< vector<double> > codeval = vector< vector<double> >(count, vector<double>(0,0) );
+		vector< vector<short> > in_codek = vector< vector<short> >(count, vector<short>(0,0) );
+		vector< vector<short> > in_codei = vector< vector<short> >(count, vector<short>(0,0) );
+		vector< vector<double> > in_codeval = vector< vector<double> >(count, vector<double>(0,0) );
+		vector< vector<short> > out_codek = vector< vector<short> >(count, vector<short>(0,0) );
+		vector< vector<short> > out_codei = vector< vector<short> >(count, vector<short>(0,0) );
+		vector< vector<double> > out_codeval = vector< vector<double> >(count, vector<double>(0,0) );
+		
 		file.clear();
 		file.seekg(0, ios::beg);
+		
+		//discard dictionary
 		file.read((char*)&recordLength, 4);
 		file.read(buf, recordLength);
 		
@@ -192,42 +218,54 @@ int parseBinary(string infile, int *dsize, int *k, int *sLen, vector< vector<dou
 			int idx = 0 ;
 			int take = 0;
 
+			// loss 
 			take=8; memcpy(&loss,buf+idx,take); idx+=take;
-			take=2; memcpy(&sigLen,buf+idx,take); idx+=take;
-			
-			if(orig_sigLen != sigLen) printf("SIGNAL LENGTH INCONSISTENCE\n");
-
 			ls[i] = loss;
 
+			// input signal len
+			take=2; memcpy(&sigLen,buf+idx,take); idx+=take;
+			
+			// input signal array
+			in_codek[i].resize(sigLen);
+			in_codei[i].resize(sigLen);
+			in_codeval[i].resize(sigLen);
 			for(int j=0 ; j<sigLen; j++)
 			{	
-				take=4; memcpy(&ftmp,buf+idx,take); idx+=take; 
-				sig[i][j] = (double)ftmp;
+				take=2; memcpy(&stmp,buf+idx,take); idx+=take; 
+				in_codek[i][j]=stmp;
+				take=2; memcpy(&stmp,buf+idx,take); idx+=take; 
+				in_codei[i][j]=stmp;
+				take=4; memcpy(&ftmp,buf+idx,take); idx+=take;
+				in_codeval[i][j]=ftmp;
 			}
 
+			// output signal len
 			take=2; memcpy(&zLen,buf+idx,take); idx+=take;
-			
-			codek[i].resize(zLen);
-			codei[i].resize(zLen);
-			codeval[i].resize(zLen);
 
+
+			// output signal array
+			out_codek[i].resize(zLen);
+			out_codei[i].resize(zLen);
+			out_codeval[i].resize(zLen);
 			for(int j=0 ; j<zLen; j++)
 			{	
 				take=2; memcpy(&stmp,buf+idx,take); idx+=take; 
-				codek[i][j]=stmp;
+				out_codek[i][j]=stmp;
 				take=2; memcpy(&stmp,buf+idx,take); idx+=take; 
-				codei[i][j]=stmp;
+				out_codei[i][j]=stmp;
 				take=4; memcpy(&ftmp,buf+idx,take); idx+=take;
-				codeval[i][j]=ftmp;
+				out_codeval[i][j]=ftmp;
 			}
 		}
 
-		*s = sig;
-		*ck = codek;
-		*ci = codei;
-		*cv = codeval;
 		*l = ls;
-
+		*inck = in_codek;
+		*inci = in_codei;
+		*incv = in_codeval;
+		*outck = out_codek;
+		*outci = out_codei;
+		*outcv = out_codeval;
+		
 		return count;
 	}
 	else
@@ -236,64 +274,53 @@ int parseBinary(string infile, int *dsize, int *k, int *sLen, vector< vector<dou
 	}
 }
 
-vector<int> shuffleArray(int total)
-{
-	vector<int> v(total,0);
-	for(int i = 0 ; i < total ; i++)
-		v[i]=i;
-	std::random_device rd;
-    std::mt19937 g(rd());
-    std::shuffle(v.begin(), v.end(), g);
-    return v;
-}
-
-double genOldLoss(vector<double> S1,vector<double> S2)
-{
-	double ls=0;
-	for(int i =0 ; i < S1.size();i++)
+void testFilePrecision(vector< vector< vector<double> > > in_D,vector<double> in_L, vector< vector<short> > prev_codek, vector< vector<short> > prev_codei, vector< vector<double> > prev_codeval, vector< vector<short> > in_codek, vector< vector<short> > in_codei, vector< vector<double> > in_codeval)
+{	
+	double sumLoss = 0;
+	#pragma omp parallel for num_threads(T)
+	for(int i = 0 ; i < prev_codek.size() ; i++)
 	{
-		ls+= (S1[i]-S2[i])*(S1[i]-S2[i]);
-	}
-	return ls;
-}
+		//gen X Z 
+		vector< vector<double> > X(in_prevk, vector<double>(ssize-2*in_dsize,0) );
+		vector< vector<double> > R(in_prevk, vector<double>(ssize-2*in_dsize,0) );
+		vector< vector<double> > Z(in_k, vector<double>(ssize,0) );
 
-vector<double> genOldReconstruct(vector< vector<double> > D, vector<double> S, vector<short> ck, vector<short>ci, vector<double> cv)
-{
-	vector<double> recon(S.size(),0);
-	vector< vector<double> > Z(D.size(), vector<double>(S.size()+2*D[0].size(),0)); 
-	int ds = (D[0].size()-1)/2;
-	for(int i = 0 ; i < ck.size();i++)
-	{
-		Z[ck[i]][ci[i]+ds] = cv[i];
-	}
-
-	for(int k =0 ; k < D.size(); k++)
-	{
-		for(int i =0 ; i < S.size(); i++)
+		//uncompress X Z
+		for (int j=0; j<prev_codei[i].size(); j++)
 		{
-			double tmp = 0;
-			for(int j=0 ; j< D[k].size(); j++)
+			X[prev_codek[i][j]][prev_codei[i][j]] = prev_codeval[i][j];
+ 		}
+
+ 		for (int j=0; j<in_codei[i].size(); j++)
+		{
+			Z[in_codek[i][j]][in_codei[i][j]+in_dsize] = in_codeval[i][j];
+ 		}
+		
+		//reconstruct 
+		double loss = 0;
+		for(int j=0;j<ssize-2*in_dsize; j++)
+		{
+			// for(int pk=0; pk<in_prevk; pk++)
+			int pk=0;
 			{
-				tmp += D[k][j] * Z[k][i+j]; 
+				double total = 0;
+				for(int ik=0; ik<in_k; ik++)
+				{
+					for(int d=-in_dsize; d<=in_dsize; d++)
+					{
+						total += Z[ik][j+d+in_dsize] * in_D[ik][pk][d+in_dsize];
+					}
+				}
+				loss += (X[pk][j] - total) * (X[pk][j] - total);
 			}
-			recon[i] += tmp;
+		}
+		if(fabs(in_L[i]-loss )> 0.001) printf("FAIL RECONCILE : %f\n",in_L[i]-loss ); 
+		#pragma omp critical
+		{
+			sumLoss += in_L[i]-loss;
 		}
 	}
-	return recon;
-}
-
-void testFilePrecision(vector< vector<double> > in_D,vector<double> in_L, vector< vector<double> > in_S, vector< vector<short> > in_codek, vector< vector<short> > in_codei, vector< vector<double> > in_codeval)
-{
-	double total = 0;
-	#pragma omp parallel for num_threads(T)
-	for(int i = 0 ; i < in_S.size() ; i++)
-	{
-		vector<double> recon = genOldReconstruct(in_D,in_S[i],in_codek[i],in_codei[i],in_codeval[i]);
-		float ls = genOldLoss(recon,in_S[i]);
-		#pragma omp critical 
-		total+=fabs(ls-in_L[i]);
-	}
-	printf("AvgLoss Lossy File Encode-Decode : %.10f\n",total/in_S.size());
+	printf("AvgLoss Lossy File Encode-Decode : %.10f\n",sumLoss/ prev_codek.size());
 }
 
 double shrink(double beta, double lamb)
@@ -377,7 +404,7 @@ void syncDictionary(int t)
 
 void importDictionary()
 {
-	ifstream infile("/home/kanit/Dropbox/arrhythmia_project_shared/result_lay2/25279.txt");	
+	ifstream infile("/home/kanit/Dropbox/arrhythmia_project_shared/result_lay2/1299.txt");	
 	string line;
 	
 	//skip 9 lines
@@ -513,8 +540,6 @@ void normalizeS(int t)
 		}
 	}
 }
-
-
 
 void initZ(int t) 
 {
@@ -844,47 +869,114 @@ void reportTesting(int t,double loss,double zround, double dround, int fileID)
 	myfile.close();
 }
 
-void mergeInput( vector< vector<short> > ck, vector< vector<short> > ci, vector< vector<double> > cv)
+void mergeInput( vector<double> sl, vector< vector<short> > pck, vector< vector<short> > pci, vector< vector<double> > pcv,vector< vector<short> > ick, vector< vector<short> > ici, vector< vector<double> > icv)
 {
-	for(int i = 0;  i< ck.size() ;i++)
+	for(int i = 0;  i< ick.size() ;i++)
 	{
-		in_codek.push_back(ck[i]);
-		in_codei.push_back(ci[i]);
-		in_codeval.push_back(cv[i]);
+		in_codek.push_back(ick[i]);
+		in_codei.push_back(ici[i]);
+		in_codeval.push_back(icv[i]);
+		
+		prev_L.push_back(sl[i]);
+
+		prev_codek.push_back(pck[i]);
+		prev_codei.push_back(pci[i]);
+		prev_codeval.push_back(pcv[i]);
 	}
 }
 
-int main(void)
-{	
-	int nSamples=0;
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-0.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&in_codek,&in_codei,&in_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-1.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-2.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-3.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-4.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-5.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-6.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-7.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-8.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_reg0.05_ds7_k50/data-9.bin",&in_dsize,&in_k,&in_sLen,&in_D,&in_L,&in_S,&tmp_codek,&tmp_codei,&tmp_codeval);
-	mergeInput(tmp_codek,tmp_codei,tmp_codeval);
-
-	rd = shuffleArray(nSamples);
-	printf("samples : %d\n",nSamples);
-	printf("in_k : %d\n",in_k);
-	printf("ssize : %d\n",ssize);
-	printf("dsize : %d\n",dsize);
-	printf("K : %d\n",K);
-	printf("T : %d\n",T);
+void writeHead(int t)
+{
+	int recordLen = K*in_k*(dsize*2+1)*4 +4+4+4;
+	outfile[t].write((char*) &recordLen, 4);
+	outfile[t].write((char*) &K, 4);
+	outfile[t].write((char*) &in_k, 4);
+	outfile[t].write((char*) &dsize, 4);
+	outfile[t].write((char*) &ssize, 4);
 	
+	for(int k =0 ; k < K ; k++)
+	{
+		for(int ik =0 ; ik < in_k ; ik++)
+		{
+			for(int i=-dsize ; i <= dsize ; i++)
+			{
+				float dd = dm(k,ik,i);
+				outfile[t].write((char*) &dd,4);
+			}
+		}
+	}
+	outfile[t].flush();
+}
+
+void writeFile(int t,double loss)
+{
+	int count = 0;
+	
+	vector<float> inval(0,0);
+	vector<short> inkindex(0,0);
+	vector<short> iniindex(0,0);
+	
+	vector<float> outval(0,0);
+	vector<short> outkindex(0,0);
+	vector<short> outiindex(0,0);
+	
+	for(int ik=0 ; ik < in_k ; ik++)
+	{
+		for(int i=0;i<ssize;i++)
+		{
+			if(abs(s(t,ik,i))>0.000001)
+			{
+				inval.push_back((float)s(t,ik,i));
+				inkindex.push_back(ik);
+				iniindex.push_back(i);
+			}
+		}
+	}
+
+	for(int k=0 ; k<K; k++)
+	{
+		for(int i=-dsize; i<ssize+dsize; i++)
+		{
+			if(abs(z(t,k,i))>0.000001)
+			{
+				outval.push_back((float)z(t,k,i));
+				outkindex.push_back(k);
+				outiindex.push_back(i);
+			}
+		}
+	}
+
+	int recordLen = 8 + (2 + inval.size()*(2+2+4)) + (2 + (2+2+4) * outval.size())+'x';
+	
+	outfile[t].write((char*) &recordLen, 4);
+	outfile[t].write((char*) &loss, 8);
+	
+	//z input of the layer
+	short slen_short = (short)inval.size();	
+	outfile[t].write((char*) &slen_short, 2);
+
+	for(short i=0 ; i < slen_short; i++)
+	{
+		outfile[t].write((char*) &inkindex[i], 2);
+		outfile[t].write((char*) &iniindex[i], 2);
+		outfile[t].write((char*) &inval[i], 4);
+	}
+	
+	//z output of the layer
+	short zlen_short = (short)outval.size();	
+	outfile[t].write((char*) &zlen_short, 2);
+
+	for(short i=0 ; i < zlen_short; i++)
+	{
+		outfile[t].write((char*) &outkindex[i], 2);
+		outfile[t].write((char*) &outiindex[i], 2);
+		outfile[t].write((char*) &outval[i], 4);
+	}
+	outfile[t].flush();
+}
+
+void initGenZFile()
+{
 	outfile = new ofstream[T];
 	for(int i = 0; i< T ; i++)
 	{
@@ -893,7 +985,63 @@ int main(void)
 		outfile[i].open(outname,std::ofstream::binary);
 		writeHead(i);
 	}
-	// testFilePrecision(in_D,in_L,in_S,in_codek,in_codei,in_codeval);
+}
+
+int main(void)
+{	
+	int nSamples=0;
+	
+	//main data
+	nSamples += parseBinary("/home/kanit/anomalydeep/dataout_lay1/data-0.bin",
+		&in_dsize,
+		&in_k,
+		&in_prevk,
+		&in_sLen,
+		&prev_D,
+		&prev_L,
+		&prev_codek,
+		&prev_codei,
+		&prev_codeval,
+		&in_codek,
+		&in_codei,
+		&in_codeval);
+	
+	ssize = (int)in_sLen;
+
+
+	//more data
+	for(int i =1 ; i<30;i++)
+	{
+		char dataName[100];
+		sprintf(dataName,"/home/kanit/anomalydeep/dataout_lay1/data-%d.bin",i);
+		nSamples += parseBinary(
+			dataName,
+			&in_dsize,
+			&in_k,
+			&in_prevk,
+			&in_sLen,
+			&prev_D,
+			&tmp_L,
+			&tmp1_codek,
+			&tmp1_codei,
+			&tmp1_codeval,
+			&tmp2_codek,
+			&tmp2_codei,
+			&tmp2_codeval);
+		mergeInput(tmp_L, tmp1_codek, tmp1_codei, tmp1_codeval, tmp2_codek, tmp2_codei, tmp2_codeval);
+	}
+
+	printf("samples : %d\n",nSamples);
+	printf("prev_k : %d\n",in_prevk);
+	printf("in_k : %d\n",in_k);
+	printf("ssize : %d\n",ssize);
+	printf("dsize : %d\n",dsize);
+	printf("OldDsize : %d\n",in_dsize);
+	printf("K : %d\n",K);
+	printf("T : %d\n",T);
+
+	// testFilePrecision(prev_D,prev_L,prev_codek,prev_codei,prev_codeval,in_codek,in_codei,in_codeval);
+	// return 0;
 
 	DM = vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 )));
 	D  = vector< vector< vector< vector<double> > > >(T,vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 ))));
@@ -904,33 +1052,35 @@ int main(void)
 	ND  = vector< vector< vector< vector<double> > > >(T, vector< vector< vector<double> > >(K, vector<vector<double>>(in_k, vector<double>(dsize*2 +1, 0 ))));
 	recon = vector< vector< vector<double> > >(T,vector< vector<double> >(in_k, vector<double>(ssize,0)));
 	
-	ssize=607;
+	ssize=607; // max pooling....
 	printf("ssize : %d\n",ssize);
-	
+	//parameters settled
+
 	if(willImportDict)
 		importDictionary();
 	else
 		initD();
-		
+	
 	int round = 0;
 	int round0 = 0;
 	
 	double sum100= 0;
 	vector<double> data100(100,0);
 	double num100=0;
-	double avgLoss ; 600;
+	double avgLoss;
 
 	#pragma omp parallel for num_threads(T)
 	for(int i  =0 ; i < nSamples; i++){
 		
 		int t = omp_get_thread_num();
-
 		initS(t,i);
 		normalizeS(t);
 		initZ(t);
 		initB(t);
 		
 		double l1 = calcLoss(t);
+		if(t==0 && avgLoss == -1) avgLoss = l1;
+
 		vector<double> a1 = inference(t,l1);
 		vector<double> a2 = learnDictionary(t,a1[1]);
 		
@@ -947,6 +1097,7 @@ int main(void)
 			round++;
 			printf("%d\t1> %d\t2> %f\t%.0f\t3> %f\t%.0f\t4> %f \t5> %f\n",t,round,l1,a1[0],a1[1],a2[0],a2[1],avgLoss);
 		}
+		
 		if(t==0)
 		{
 			if(round0%5==0)
